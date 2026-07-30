@@ -1,0 +1,925 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ESCALA COP · Interativa</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+<!-- ============================================================
+     FIREBASE SDK (compat build — funciona direto com <script> tags,
+     sem precisar de bundler/build step)
+     ============================================================ -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+
+<style>
+  :root{
+    --bg:#05070a; --panel:#0b0f16; --panel2:#10151d; --line:#1b232f;
+    --cyan:#4be3ff; --violet:#8b7bff; --amber:#ffb454; --green:#3ddc97; --red:#ff6b6b;
+    --text:#e4ecf3; --muted:#6c7a8a;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Space Grotesk',sans-serif;min-height:100vh;padding:0 0 90px;}
+  body::before{content:'';position:fixed;inset:0;background-image:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(75,227,255,0.015) 2px,rgba(75,227,255,0.015) 4px);pointer-events:none;z-index:0;}
+  .wrap{position:relative;z-index:1;max-width:1420px;margin:0 auto;padding:0 28px;}
+  header{padding:40px 0 24px;border-bottom:1px solid var(--line);margin-bottom:24px;}
+  .eyebrow{font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--cyan);margin-bottom:10px;}
+  h1{font-size:32px;font-weight:700;letter-spacing:-0.01em;}
+  .sub{color:var(--muted);font-size:13.5px;margin-top:8px;max-width:820px;line-height:1.5;}
+
+  .tabs{display:flex;gap:8px;margin-bottom:24px;flex-wrap:wrap;position:sticky;top:0;background:rgba(5,7,10,.92);backdrop-filter:blur(6px);padding:12px 0;z-index:5;}
+  .tab-btn{font-family:'JetBrains Mono',monospace;font-size:12.5px;letter-spacing:.05em;background:var(--panel);border:1px solid var(--line);color:var(--muted);padding:10px 18px;border-radius:8px;cursor:pointer;}
+  .tab-btn.active{color:var(--bg);background:var(--cyan);border-color:var(--cyan);font-weight:600;}
+  .tab-btn:disabled{opacity:.5;cursor:not-allowed;}
+  .panel-view{display:none;}
+  .panel-view.active{display:block;}
+
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:24px;}
+  .kpi{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 18px;}
+  .kpi .lbl{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:6px;}
+  .kpi .val{font-size:19px;font-weight:600;}
+  .kpi .val.cyan{color:var(--cyan);} .kpi .val.amber{color:var(--amber);}
+  .kpi .val.violet{color:var(--violet);} .kpi .val.green{color:var(--green);}
+
+  .sec-title{font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--cyan);margin:30px 0 14px;display:flex;align-items:center;gap:10px;}
+  .sec-title::after{content:'';flex:1;height:1px;background:var(--line);}
+
+  .cal-head{display:grid;grid-template-columns:repeat(7,1fr);gap:8px;margin-bottom:8px;}
+  .cal-head div{font-family:'JetBrains Mono',monospace;font-size:11px;text-align:center;color:var(--muted);letter-spacing:.08em;text-transform:uppercase;padding-bottom:4px;}
+  .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:8px;margin-bottom:8px;}
+  .day{background:var(--panel);border:1px solid var(--line);border-radius:9px;min-height:150px;padding:9px;position:relative;}
+  .day.empty{background:transparent;border:none;min-height:0;}
+  .day .num{font-family:'JetBrains Mono',monospace;font-size:13px;color:#ffffff;font-weight:600;}
+  .day.sat{border-color:rgba(255,180,84,.35);background:linear-gradient(160deg,rgba(255,180,84,.09),var(--panel) 60%);}
+  .day.sun{border-color:rgba(139,123,255,.35);background:linear-gradient(160deg,rgba(139,123,255,.10),var(--panel) 60%);}
+  .day.folga{border-color:rgba(61,220,151,.30);min-height:70px;}
+  .day.folga .tag{color:#ffffff;}
+  .day.normal{background:var(--panel);border-color:var(--line);}
+  .day.normal .num{color:#ffffff;text-shadow:0 0 8px rgba(255,255,255,.8), 0 0 16px rgba(255,255,255,.4);font-weight:600;}
+  .day.normal .tag{color:#ffffff;text-shadow:0 0 6px rgba(255,255,255,.6);font-weight:600;}
+  .day .tag{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin-top:3px;}
+  .day.sat .tag, .day.sun .tag{color:var(--text);font-weight:600;}
+  .slots{display:flex;flex-direction:column;gap:4px;margin-top:7px;}
+  .slot select{width:100%;font-family:'Space Grotesk',sans-serif;font-size:10.5px;font-weight:600;padding:3px 4px;border-radius:5px;border:1px solid var(--line);background:rgba(255,255,255,.06);color:var(--text);cursor:pointer;}
+  .day.sat .slot select{background:rgba(255,180,84,.14);color:var(--amber);border-color:rgba(255,180,84,.3);}
+  .day.sun .slot select{background:rgba(139,123,255,.16);color:var(--violet);border-color:rgba(139,123,255,.3);}
+  .slot.slot-t3 select{background:rgba(255,60,120,.22)!important;color:#ff5c9e!important;border-color:#ff5c9e!important;box-shadow:0 0 8px rgba(255,60,120,.35);font-weight:700;}
+  .t3-picker{margin-top:8px;padding-top:7px;border-top:1px dashed rgba(255,255,255,.12);}
+  .t3-picker label{display:block;font-family:'JetBrains Mono',monospace;font-size:8.5px;letter-spacing:.04em;text-transform:uppercase;color:#ff5c9e;margin-bottom:3px;}
+  .t3-picker select{width:100%;font-size:10px;padding:3px 4px;border-radius:5px;background:rgba(255,60,120,.10);color:#ff5c9e;border:1px solid rgba(255,60,120,.35);}
+  .chip.folga-chip{font-family:'Space Grotesk',sans-serif;font-size:10px;font-weight:600;padding:2px 6px;border-radius:5px;background:rgba(61,220,151,.14);color:var(--green);display:inline-block;margin-top:4px;}
+
+  table.report{width:100%;border-collapse:collapse;background:var(--panel);border-radius:10px;overflow:hidden;border:1px solid var(--line);font-size:12.5px;margin-bottom:10px;}
+  table.report th{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);text-align:left;padding:9px 12px;background:var(--panel2);border-bottom:1px solid var(--line);}
+  table.report td{padding:9px 12px;border-bottom:1px solid var(--line);}
+  table.report tr:last-child td{border-bottom:none;}
+  .schedule-ref{margin-bottom:20px;}
+  .code-chip{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:11px;background:rgba(75,227,255,.14);color:var(--cyan);padding:3px 9px;border-radius:6px;}
+  td.num, th.num{text-align:right;font-family:'JetBrains Mono',monospace;}
+  td.has-plantao{background:rgba(255,180,84,.08);}
+  .status{display:inline-flex;align-items:center;gap:6px;font-family:'JetBrains Mono',monospace;font-size:10.5px;padding:3px 9px;border-radius:20px;font-weight:600;white-space:nowrap;}
+  .status.ok{background:rgba(61,220,151,.12);color:var(--green);}
+  .status.watch{background:rgba(255,180,84,.12);color:var(--amber);}
+  .delta-pos{color:var(--amber);font-weight:600;}
+  .delta-neg{color:var(--cyan);font-weight:600;}
+
+  .history-block{margin:20px 0 28px;background:linear-gradient(135deg, rgba(255,180,84,.08), rgba(139,123,255,.06));border:2px solid var(--amber);border-radius:14px;padding:20px 22px;box-shadow:0 0 24px rgba(255,180,84,.15);}
+  .history-title{font-family:'JetBrains Mono',monospace;font-size:13px;letter-spacing:.06em;color:var(--amber);font-weight:700;margin-bottom:14px;display:flex;align-items:center;gap:10px;}
+  .history-count{font-family:'Space Grotesk',sans-serif;font-size:11px;font-weight:600;background:rgba(255,180,84,.18);color:var(--amber);padding:2px 10px;border-radius:12px;}
+  .history-empty{color:var(--muted);font-size:12.5px;line-height:1.5;}
+  table.history-table{background:rgba(11,15,22,.7);}
+  table.history-table td.arrow{color:var(--amber);text-align:center;font-weight:700;}
+
+  #toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--panel2);border:1px solid var(--line);color:var(--text);padding:12px 20px;border-radius:10px;font-family:'JetBrains Mono',monospace;font-size:12.5px;opacity:0;pointer-events:none;transition:all .25s ease;z-index:1000;box-shadow:0 8px 24px rgba(0,0,0,.4);}
+  #toast.toast-visible{opacity:1;transform:translateX(-50%) translateY(0);}
+  #toast.toast-error{border-color:var(--red);color:var(--red);}
+
+  .clear-history-area{margin-top:12px;}
+  .clear-confirm{margin-top:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:rgba(255,107,107,.08);border:1px solid rgba(255,107,107,.3);border-radius:8px;padding:12px 14px;}
+  .clear-confirm span{font-size:12px;color:var(--text);}
+  .clear-confirm input{background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:6px;padding:6px 10px;font-size:12px;width:140px;}
+  .dot{width:6px;height:6px;border-radius:50%;background:currentColor;}
+
+  .legend{display:flex;gap:20px;flex-wrap:wrap;margin:14px 0 8px;font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--muted);}
+  .legend span{display:inline-flex;align-items:center;gap:7px;}
+  .swatch{width:12px;height:12px;border-radius:3px;display:inline-block;}
+
+  .note{margin-top:16px;background:var(--panel2);border:1px solid var(--line);border-left:3px solid var(--cyan);border-radius:8px;padding:14px 16px;font-size:12px;color:var(--muted);line-height:1.6;}
+  .note b{color:var(--text);}
+  .note.warn{border-left-color:var(--red);}
+
+  table.matrix{width:100%;border-collapse:collapse;background:var(--panel);border-radius:10px;overflow:hidden;border:1px solid var(--line);font-size:11.5px;}
+  table.matrix th{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.03em;text-transform:uppercase;color:var(--muted);text-align:left;padding:8px 9px;background:var(--panel2);border-bottom:1px solid var(--line);border-left:1px solid var(--line);}
+  table.matrix th:first-child{border-left:none;}
+  table.matrix .wrange{display:block;font-weight:400;color:var(--muted);font-size:8px;margin-top:2px;text-transform:none;}
+  table.matrix td{padding:8px 9px;border-bottom:1px solid var(--line);border-left:1px solid var(--line);}
+  table.matrix td:first-child{border-left:none;font-weight:600;}
+  table.matrix tr:last-child td{border-bottom:none;}
+
+  /* ---- LOGIN SCREEN (split-screen, âmbar) ---- */
+  #loginScreen{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;position:relative;z-index:2;}
+  .login-split{width:100%;max-width:820px;display:grid;grid-template-columns:1fr 1fr;border-radius:18px;overflow:hidden;border:1px solid var(--line);box-shadow:0 0 60px rgba(255,92,158,.10);}
+  .login-left{background:linear-gradient(160deg,#0b0f16 0%,#2a1122 130%);padding:48px 40px;display:flex;flex-direction:column;justify-content:center;position:relative;}
+  .login-left::before{content:'';position:absolute;inset:0;background-image:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(255,92,158,0.03) 2px,rgba(255,92,158,0.03) 4px);pointer-events:none;}
+  .login-right{background:var(--panel);padding:48px 40px;display:flex;flex-direction:column;justify-content:center;}
+  .login-mini-cal{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;margin-top:26px;max-width:280px;}
+  .login-mini-cal div{height:16px;border-radius:4px;background:var(--panel2);}
+  .login-mini-cal div.hl{background:#ff5c9e;}
+  .login-mini-legend{display:flex;gap:16px;margin-top:16px;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);}
+  .login-mini-legend span{display:inline-flex;align-items:center;gap:6px;}
+  .login-mini-legend .sw{width:9px;height:9px;border-radius:2px;background:#ff5c9e;display:inline-block;}
+  .login-label{display:block;font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:6px;}
+  .login-field{width:100%;padding:10px 12px;border-radius:8px;background:var(--panel2);border:1px solid var(--line);color:var(--text);font-size:13px;margin-bottom:16px;}
+  select.login-field{font-family:'Space Grotesk',sans-serif;}
+  input.login-field{font-family:'JetBrains Mono',monospace;}
+  .login-hint{font-size:11px;color:var(--muted);margin:-10px 0 16px;line-height:1.5;}
+  #loginError{display:none;color:var(--red);font-size:11.5px;font-family:'JetBrains Mono',monospace;margin-bottom:12px;}
+  #loginInfo{display:none;color:var(--green);font-size:11.5px;font-family:'JetBrains Mono',monospace;margin-bottom:12px;}
+  #configWarning{display:none;color:var(--amber);font-size:11.5px;font-family:'JetBrains Mono',monospace;margin-bottom:16px;line-height:1.6;background:rgba(255,180,84,.08);border:1px solid rgba(255,180,84,.3);border-radius:8px;padding:12px 14px;}
+  .login-btn{width:100%;padding:12px;text-align:center;margin-top:4px;background:#ff5c9e!important;border-color:#ff5c9e!important;color:#2a1122!important;}
+  .login-toggle{display:flex;gap:8px;margin-bottom:20px;}
+  .login-cat-btn{flex:1;text-align:center;}
+  .login-cat-btn.active{background:#ff5c9e!important;border-color:#ff5c9e!important;color:#2a1122!important;}
+  .who-chip{font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--cyan);border:1px solid var(--line);padding:6px 12px;border-radius:8px;background:var(--panel2);}
+  .spinner{display:inline-block;width:12px;height:12px;border:2px solid rgba(42,17,34,.35);border-top-color:#2a1122;border-radius:50%;animation:spin .7s linear infinite;margin-right:6px;vertical-align:-2px;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+
+  @media (max-width:720px){
+    .login-split{grid-template-columns:1fr;max-width:420px;}
+    .login-left{padding:36px 32px 24px;}
+    .login-right{padding:32px 32px 40px;}
+  }
+
+  @media (max-width:1100px){
+    .kpis{grid-template-columns:repeat(2,1fr);}
+    table.matrix, table.report{display:block;overflow-x:auto;}
+    .day{min-height:130px;}
+  }
+</style>
+</head>
+<body>
+
+<div id="loginScreen">
+  <div class="login-split">
+    <div class="login-left">
+      <div class="eyebrow" style="color:#ff5c9e;margin-bottom:8px;">Escala COP</div>
+      <h1 style="font-size:21px;line-height:1.35;margin-bottom:6px;">Turnos, plantões e folgas organizados em um só lugar.</h1>
+      <div class="sub" style="margin-top:0;">Ago a Dez/2026 · acesso por perfil (Colaborador, Líder ou Master).</div>
+      <div class="login-mini-cal">
+        <div></div><div></div><div class="hl"></div><div></div><div></div><div class="hl"></div><div class="hl"></div>
+        <div></div><div class="hl"></div><div></div><div></div><div class="hl"></div><div></div><div></div>
+        <div></div><div></div><div></div><div class="hl"></div><div></div><div></div><div class="hl"></div>
+      </div>
+      <div class="login-mini-legend">
+        <span><span class="sw"></span>Plantão / troca de turno</span>
+      </div>
+    </div>
+
+    <div class="login-right">
+      <div class="eyebrow" style="margin-bottom:6px;">Acesso restrito</div>
+      <div class="sub" style="margin:0 0 20px;">Selecione seu usuário e digite sua senha.</div>
+
+      <div id="configWarning"></div>
+
+      <div class="login-toggle">
+        <button type="button" class="tab-btn active login-cat-btn" id="catCopBtn" onclick="setLoginCategory('cop')">Colaborador (COP)</button>
+        <button type="button" class="tab-btn login-cat-btn" id="catLiderBtn" onclick="setLoginCategory('lideranca')">Liderança</button>
+      </div>
+
+      <label class="login-label">Usuário</label>
+      <select id="loginUser" class="login-field"></select>
+
+      <label class="login-label">Senha</label>
+      <input id="loginPass" type="password" class="login-field" placeholder="••••••••" onkeydown="if(event.key==='Enter') attemptLogin()">
+      <div class="login-hint">🔐 Primeiro acesso? Digite a senha que você quer usar a partir de agora — ela será criada automaticamente (mínimo 6 caracteres).</div>
+
+      <div id="loginError"></div>
+      <div id="loginInfo"></div>
+
+      <button class="tab-btn active login-btn" id="loginBtn" onclick="attemptLogin()">Entrar</button>
+    </div>
+  </div>
+</div>
+
+<div id="dashboardRoot" style="display:none;">
+<div class="wrap">
+
+  <header>
+    <div class="eyebrow">COP · Escala Interativa</div>
+    <h1>ESCALA COP — Ago a Dez/2026</h1>
+    <div class="sub" id="subHeaderText">Sábado (4, times mesclados) + domingo (2).</div>
+    <div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+      <span class="who-chip" id="whoami"></span>
+      <button class="tab-btn" onclick="logout()">Sair</button>
+      <div id="sharedActions" style="display:flex;gap:10px;flex-wrap:wrap;">
+        <button class="tab-btn" style="color:var(--green);border-color:rgba(61,220,151,.4);" onclick="exportState()">📤 Exportar estado atual (backup)</button>
+      </div>
+    </div>
+    <div id="exportBox" style="display:none;margin-top:12px;">
+      <div class="note" style="border-left-color:var(--green);">
+        <b>Backup manual do estado atual.</b> A escala já fica salva automaticamente no Firebase a cada alteração — isto aqui é só uma cópia de segurança em texto.
+      </div>
+      <textarea id="exportTextarea" readonly style="width:100%;height:160px;margin-top:8px;background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:12px;font-family:'JetBrains Mono',monospace;font-size:11px;"></textarea>
+    </div>
+  </header>
+
+  <div class="tabs" id="tabsBar"></div>
+
+  <div id="monthPanels"></div>
+
+</div>
+</div>
+
+<script>
+// ============================================================
+// CONFIGURAÇÃO DO FIREBASE — cole aqui os valores do SEU projeto
+// (Console Firebase → Configurações do projeto → Seus apps → Config)
+// Veja o passo a passo completo na mensagem que acompanha este arquivo.
+// ============================================================
+const firebaseConfig = {
+  apiKey: "AIzaSyDWFkbivq_xDJue14-8pRRDchlsf064NRM",
+  authDomain: "escalacop.firebaseapp.com",
+  projectId: "escalacop",
+  storageBucket: "escalacop.firebasestorage.app",
+  messagingSenderId: "858216191136",
+  appId: "1:858216191136:web:d2e819254d7060387725c5"
+};
+
+const FIREBASE_CONFIGURED = firebaseConfig.apiKey !== "SUA_API_KEY_AQUI";
+
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.firestore();
+// Sem persistência local: ao fechar/recarregar a página é preciso logar de
+// novo. Evita depender de localStorage, que pode ser bloqueado quando este
+// arquivo roda dentro de um Artifact do Claude.
+auth.setPersistence(firebase.auth.Auth.Persistence.NONE).catch(()=>{});
+
+// ================== DATA ==================
+const ALL_PEOPLE = ['Bárbara','Julia','Luana','Brian','Eduardo','Taynara','Bruno','Raqueli'];
+const AGEND = new Set(['Taynara','Bruno','Raqueli']);
+const MONTH_NAMES = {8:'Agosto',9:'Setembro',10:'Outubro',11:'Novembro',12:'Dezembro'};
+const YEAR = 2026;
+const START = new Date('2026-08-01T00:00:00');
+const END = new Date('2026-12-31T00:00:00');
+
+let satCrew = {"2026-08-01":["Bárbara","Julia","Luana","Taynara"],"2026-08-08":["Luana","Julia","Brian","Bruno"],"2026-08-15":["Eduardo","Luana","Brian","Raqueli"],"2026-08-22":["Bárbara","Eduardo","Brian","Taynara"],"2026-08-29":["Bárbara","Julia","Taynara","Eduardo"],"2026-09-05":["Julia","Bárbara","Raqueli","Bruno"],"2026-09-12":["Luana","Julia","Bárbara","Raqueli"],"2026-09-19":["Brian","Luana","Julia","Bruno"],"2026-09-26":["Taynara","Eduardo","Brian","Luana"],"2026-10-03":["Raqueli","Bruno","Taynara","Eduardo"],"2026-10-10":["Julia","Bárbara","Raqueli","Bruno"],"2026-10-17":["Luana","Julia","Bárbara","Raqueli"],"2026-10-24":["Brian","Luana","Julia","Taynara"],"2026-10-31":["Bárbara","Eduardo","Luana","Taynara"],"2026-11-07":["Bruno","Bárbara","Eduardo","Brian"],"2026-11-14":["Bárbara","Raqueli","Bruno","Taynara"],"2026-11-21":["Luana","Julia","Bárbara","Raqueli"],"2026-11-28":["Eduardo","Brian","Julia","Taynara"],"2026-12-05":["Eduardo","Brian","Luana","Taynara"],"2026-12-12":["Bruno","Bárbara","Eduardo","Brian"],"2026-12-19":["Bárbara","Raqueli","Bruno","Taynara"],"2026-12-26":["Luana","Julia","Bárbara","Raqueli"]};
+let sunCrew = {"2026-08-02":["Eduardo","Raqueli"],"2026-08-09":["Bárbara","Taynara"],"2026-08-16":["Julia","Bruno"],"2026-08-23":["Luana","Raqueli"],"2026-08-30":["Brian","Bruno"],"2026-09-06":["Taynara","Eduardo"],"2026-09-13":["Brian","Taynara"],"2026-09-20":["Bárbara","Eduardo"],"2026-09-27":["Julia","Bárbara"],"2026-10-04":["Brian","Luana"],"2026-10-11":["Taynara","Eduardo"],"2026-10-18":["Bruno","Brian"],"2026-10-25":["Raqueli","Bruno"],"2026-11-01":["Julia","Raqueli"],"2026-11-08":["Luana","Julia"],"2026-11-15":["Eduardo","Brian"],"2026-11-22":["Bruno","Taynara"],"2026-11-29":["Raqueli","Bruno"],"2026-12-06":["Bárbara","Raqueli"],"2026-12-13":["Luana","Julia"],"2026-12-20":["Eduardo","Brian"],"2026-12-27":["Bruno","Taynara"]};
+let folgaPlan = {};
+let changeHistory = [];
+let satT3 = {"2026-08-01":0,"2026-08-08":1,"2026-08-15":1,"2026-08-22":2,"2026-08-29":3};
+const MANAGER_PIN = '2026COP'; // senha de gestor para limpar histórico — altere aqui
+
+const WEEKDAY_SCHEDULE = {
+  'Eduardo': {code:'T4', hours:'11h às 20h'},
+  'Bárbara': {code:'T3', hours:'09h às 18h'},
+  'Julia':   {code:'T2', hours:'08h às 17h'},
+  'Luana':   {code:'T1', hours:'07:30 às 16:30'},
+  'Brian':   {code:'T3', hours:'09h às 18h'},
+  'Taynara': {code:'T2', hours:'08h às 17h'},
+  'Bruno':   {code:'T2', hours:'08h às 17h'},
+  'Raqueli': {code:'T2', hours:'08h às 18h'},
+};
+
+// ================== USUÁRIOS / PERFIS ==================
+// Estrutura de acesso (COP / LÍDER / MASTER). Não é informação sensível —
+// a senha de cada um fica só no Firebase, nunca aqui no código.
+function stripAccents(s){ return s.normalize('NFD').replace(/[\u0300-\u036f]/g,''); }
+
+const APP_USERS = {};
+ALL_PEOPLE.forEach(p=>{
+  const uname = stripAccents(p).toLowerCase();
+  APP_USERS[uname] = { email: uname + '@escalacop.local', role: 'cop', person: p };
+});
+APP_USERS['rafael'] = { email: 'rafael@escalacop.local', role: 'lider', person: 'Rafael' };
+APP_USERS['kassy']  = { email: 'kassy@escalacop.local',  role: 'lider', person: 'Kassy' };
+APP_USERS['master'] = { email: 'master@escalacop.local', role: 'master' };
+
+let currentUser = null;
+let unsubscribeSchedule = null;
+
+let loginCategory = 'cop';
+
+function setLoginCategory(cat){
+  loginCategory = cat;
+  document.getElementById('catCopBtn').classList.toggle('active', cat==='cop');
+  document.getElementById('catLiderBtn').classList.toggle('active', cat==='lideranca');
+  populateLoginSelect(cat);
+  document.getElementById('loginPass').value = '';
+  document.getElementById('loginError').style.display = 'none';
+  document.getElementById('loginInfo').style.display = 'none';
+}
+
+function populateLoginSelect(category){
+  const sel = document.getElementById('loginUser');
+  const entries = Object.keys(APP_USERS).filter(u=>{
+    const role = APP_USERS[u].role;
+    return category === 'cop' ? role === 'cop' : (role === 'lider' || role === 'master');
+  });
+  sel.innerHTML = entries.map(u=>{
+    const c = APP_USERS[u];
+    let label;
+    if(c.role === 'cop') label = c.person; // só o nome, sem legenda
+    else if(c.role === 'lider') label = `${c.person} — Líder`;
+    else label = 'Master — acesso total';
+    return `<option value="${u}">${label}</option>`;
+  }).join('');
+}
+
+function authErrorMessage(err){
+  switch(err.code){
+    case 'auth/wrong-password': return 'Senha incorreta.';
+    case 'auth/weak-password': return 'A senha precisa ter pelo menos 6 caracteres.';
+    case 'auth/invalid-email': return 'Erro interno de configuração (e-mail inválido). Confira o firebaseConfig.';
+    case 'auth/too-many-requests': return 'Muitas tentativas incorretas. Aguarde um pouco e tente novamente.';
+    case 'auth/network-request-failed': return 'Falha de conexão com o Firebase. Verifique sua internet e o firebaseConfig.';
+    case 'auth/api-key-not-valid': case 'auth/invalid-api-key': return 'A configuração do Firebase (apiKey) está incorreta ou incompleta.';
+    case 'auth/operation-not-allowed': return 'Ative o método "E-mail/senha" em Authentication → Sign-in method no console do Firebase.';
+    default: return err.message || 'Erro ao autenticar.';
+  }
+}
+
+async function attemptLogin(){
+  const errEl = document.getElementById('loginError');
+  const infoEl = document.getElementById('loginInfo');
+  errEl.style.display = 'none';
+  infoEl.style.display = 'none';
+
+  if(!FIREBASE_CONFIGURED){
+    errEl.textContent = 'O Firebase ainda não foi configurado neste arquivo (veja o aviso acima).';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  const uname = document.getElementById('loginUser').value;
+  const password = document.getElementById('loginPass').value;
+  const cred = APP_USERS[uname];
+  if(!password || password.length < 6){
+    errEl.textContent = 'Digite uma senha com pelo menos 6 caracteres.';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  const btn = document.getElementById('loginBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>Entrando...';
+
+  try{
+    await auth.signInWithEmailAndPassword(cred.email, password);
+    await onLoginSuccess(uname, cred, false);
+  }catch(err){
+    if(err.code === 'auth/user-not-found'){
+      try{
+        await auth.createUserWithEmailAndPassword(cred.email, password);
+        await onLoginSuccess(uname, cred, true);
+      }catch(err2){
+        errEl.textContent = authErrorMessage(err2);
+        errEl.style.display = 'block';
+      }
+    } else {
+      errEl.textContent = authErrorMessage(err);
+      errEl.style.display = 'block';
+    }
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Entrar';
+  }
+}
+
+async function onLoginSuccess(uname, cred, isNewAccount){
+  currentUser = { username: uname, role: cred.role, person: cred.person || null };
+
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('dashboardRoot').style.display = 'block';
+
+  const whoami = document.getElementById('whoami');
+  const subText = document.getElementById('subHeaderText');
+  const sharedActions = document.getElementById('sharedActions');
+
+  if(currentUser.role === 'cop'){
+    whoami.textContent = `${currentUser.person} · COP`;
+    subText.textContent = 'Aqui você acompanha sua escala pessoal: turnos, plantões de fim de semana e folgas ao longo do período.';
+    sharedActions.style.display = 'none';
+  } else if(currentUser.role === 'lider'){
+    whoami.textContent = `${currentUser.person} · LÍDER`;
+    subText.textContent = 'Sábado (4, times mesclados) + domingo (2). Clique em qualquer nome no calendário para trocar por outro colaborador — o resumo de horas recalcula automaticamente.';
+    sharedActions.style.display = 'flex';
+  } else {
+    whoami.textContent = 'MASTER · acesso total';
+    subText.textContent = 'Sábado (4, times mesclados) + domingo (2). Clique em qualquer nome no calendário para trocar por outro colaborador. Use as abas Configurações e Financeiro para itens administrativos.';
+    sharedActions.style.display = 'flex';
+  }
+
+  if(isNewAccount) showToast(`Senha criada com sucesso para ${uname}.`, false);
+
+  await bootDashboard();
+}
+
+function logout(){
+  if(unsubscribeSchedule){ unsubscribeSchedule(); unsubscribeSchedule = null; }
+  auth.signOut().catch(()=>{});
+  currentUser = null;
+  document.getElementById('dashboardRoot').style.display = 'none';
+  document.getElementById('loginScreen').style.display = 'flex';
+  document.getElementById('loginPass').value = '';
+  document.getElementById('loginError').style.display = 'none';
+  document.getElementById('loginInfo').style.display = 'none';
+}
+
+function showToast(msg, isError){
+  let t = document.getElementById('toast');
+  if(!t){
+    t = document.createElement('div');
+    t.id = 'toast';
+    document.body.appendChild(t);
+  }
+  t.textContent = msg;
+  t.className = 'toast-visible' + (isError ? ' toast-error' : '');
+  clearTimeout(window._toastTimer);
+  window._toastTimer = setTimeout(()=>{ t.className=''; }, 3500);
+}
+
+// ================== DATE HELPERS ==================
+function toISO(d){ return d.toISOString().slice(0,10); }
+function addDays(d,n){ const r=new Date(d); r.setDate(r.getDate()+n); return r; }
+function dow(d){ return (d.getDay()+6)%7; }
+function fromISO(s){ return new Date(s+'T00:00:00'); }
+
+// ================== FOLGA RECOMPUTE ==================
+function recomputeFolga(){
+  folgaPlan = {};
+  for(const sunISO in sunCrew){
+    const sund = fromISO(sunISO);
+    const mondayNext = addDays(sund, 1);
+    const fridayNext = addDays(sund, 5);
+    const candidates = [mondayNext, fridayNext].filter(d => d>=START && d<=END);
+    if(candidates.length===0) continue;
+    sunCrew[sunISO].forEach((p, idx)=>{
+      const day = candidates[idx % candidates.length];
+      const iso = toISO(day);
+      if(!folgaPlan[iso]) folgaPlan[iso] = [];
+      folgaPlan[iso].push(p);
+    });
+  }
+}
+
+// ================== HOURS LOGIC ==================
+function hasFolga(dateISO, person){ return (folgaPlan[dateISO]||[]).includes(person); }
+function dayHours(person, d){
+  const iso = toISO(d);
+  const w = dow(d);
+  if(w===5) return (satCrew[iso]||[]).includes(person) ? 8 : 0;
+  if(w===6) return (sunCrew[iso]||[]).includes(person) ? 8 : 0;
+  return hasFolga(iso, person) ? 0 : 8;
+}
+function hasPlantao(person, d){
+  const iso = toISO(d);
+  const w = dow(d);
+  if(w===5) return (satCrew[iso]||[]).includes(person);
+  if(w===6) return (sunCrew[iso]||[]).includes(person);
+  return false;
+}
+function weeksForMonth(year, month){
+  const first = new Date(year, month-1, 1);
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const last = new Date(year, month-1, daysInMonth);
+  const weeks = [];
+  let monday = addDays(first, -dow(first));
+  while(monday <= last){
+    const daysInRange = [];
+    for(let k=0;k<7;k++){
+      const d = addDays(monday, k);
+      if(d.getMonth()===month-1 && d>=START && d<=END) daysInRange.push(d);
+    }
+    weeks.push({monday: new Date(monday), daysInRange});
+    monday = addDays(monday, 7);
+  }
+  return weeks;
+}
+
+// ================== RENDER: CALENDAR (LIDER/MASTER — editável) ==================
+function formatDelta(avg){
+  const delta = avg - 44;
+  const sign = delta > 0 ? '+' : (delta < 0 ? '-' : '');
+  return `${sign}${Math.abs(delta).toFixed(1)}h`;
+}
+function buildScheduleRefRows(personFilter){
+  const people = personFilter ? [personFilter] : ALL_PEOPLE;
+  return people.map(p=>{
+    const s = WEEKDAY_SCHEDULE[p];
+    return `<tr><td>${p.toUpperCase()}</td><td><span class="code-chip">${s.code}</span></td><td>${s.hours}</td></tr>`;
+  }).join('');
+}
+function personOptions(selected){
+  return ALL_PEOPLE.map(p=>`<option value="${p}" ${p===selected?'selected':''}>${p}</option>`).join('');
+}
+function dayCell(d){
+  const iso = toISO(d);
+  const w = dow(d);
+  if(d < START || d > END) return '<div class="day empty"></div>';
+  if(w===5 && satCrew[iso]){
+    const t3Idx = satT3[iso];
+    const slots = satCrew[iso].map((p,idx)=>{
+      const isT3 = (t3Idx === idx);
+      return `<div class="slot${isT3?' slot-t3':''}"><select onchange="onSwap('${iso}','sat',${idx},this.value)">${personOptions(p)}</select></div>`;
+    }).join('');
+    const t3Options = ['<option value="">— Ninguém —</option>']
+      .concat(satCrew[iso].map((p,idx)=>`<option value="${idx}" ${t3Idx===idx?'selected':''}>${p}</option>`))
+      .join('');
+    return `<div class="day sat"><div class="num">${d.getDate()}</div><div class="tag">Plantão sábado</div><div class="slots">${slots}</div>
+      <div class="t3-picker"><label>T3 (09h–18h) hoje:</label><select onchange="onSetSatT3('${iso}', this.value)">${t3Options}</select></div>
+    </div>`;
+  }
+  if(w===6 && sunCrew[iso]){
+    const slots = sunCrew[iso].map((p,idx)=>`<div class="slot"><select onchange="onSwap('${iso}','sun',${idx},this.value)">${personOptions(p)}</select></div>`).join('');
+    return `<div class="day sun"><div class="num">${d.getDate()}</div><div class="tag">Plantão domingo</div><div class="slots">${slots}</div></div>`;
+  }
+  if(folgaPlan[iso] && folgaPlan[iso].length){
+    const chips = folgaPlan[iso].map(n=>`<span class="chip folga-chip">Folga: ${n}</span>`).join('<br>');
+    return `<div class="day folga"><div class="num">${d.getDate()}</div><div class="tag">Folga</div>${chips}</div>`;
+  }
+  return `<div class="day normal"><div class="num">${d.getDate()}</div><div class="tag">Equipe completa</div></div>`;
+}
+function onSetSatT3(dateISO, value){
+  satT3[dateISO] = (value === '' ? null : Number(value));
+  renderAll();
+  saveState();
+}
+function buildMonthCalendar(year, month){
+  const first = new Date(year, month-1, 1);
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const leading = dow(first);
+  let html = '';
+  for(let i=0;i<leading;i++) html += '<div class="day empty"></div>';
+  for(let dnum=1; dnum<=daysInMonth; dnum++) html += dayCell(new Date(year, month-1, dnum));
+  return html;
+}
+
+// ================== RENDER: PERSONAL CALENDAR (COP — somente leitura) ==================
+function dayCellPersonal(d, person){
+  const iso = toISO(d);
+  const w = dow(d);
+  if(d < START || d > END) return '<div class="day empty"></div>';
+  if(w===5){
+    if((satCrew[iso]||[]).includes(person)){
+      const idx = satCrew[iso].indexOf(person);
+      const isT3 = satT3[iso] === idx;
+      return `<div class="day sat"><div class="num">${d.getDate()}</div><div class="tag">${isT3 ? 'Plantão sábado (T3)' : 'Plantão sábado'}</div></div>`;
+    }
+    return `<div class="day normal"><div class="num">${d.getDate()}</div><div class="tag">Sem plantão</div></div>`;
+  }
+  if(w===6){
+    if((sunCrew[iso]||[]).includes(person)){
+      return `<div class="day sun"><div class="num">${d.getDate()}</div><div class="tag">Plantão domingo</div></div>`;
+    }
+    return `<div class="day normal"><div class="num">${d.getDate()}</div><div class="tag">Sem plantão</div></div>`;
+  }
+  if(hasFolga(iso, person)){
+    return `<div class="day folga"><div class="num">${d.getDate()}</div><div class="tag">Folga</div></div>`;
+  }
+  const s = WEEKDAY_SCHEDULE[person];
+  return `<div class="day normal"><div class="num">${d.getDate()}</div><div class="tag">${s.code} · ${s.hours}</div></div>`;
+}
+function buildMonthCalendarPersonal(year, month, person){
+  const first = new Date(year, month-1, 1);
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const leading = dow(first);
+  let html = '';
+  for(let i=0;i<leading;i++) html += '<div class="day empty"></div>';
+  for(let dnum=1; dnum<=daysInMonth; dnum++) html += dayCellPersonal(new Date(year, month-1, dnum), person);
+  return html;
+}
+
+// ================== RENDER: MONTHLY TOTAL SUMMARY ==================
+function buildMonthlyTotalTable(personFilter){
+  let rows = '';
+  const people = personFilter ? [personFilter] : ALL_PEOPLE;
+  people.forEach(p=>{
+    let grandTotal = 0;
+    let cells = '';
+    for(const m of [8,9,10,11,12]){
+      const daysInMonth = new Date(YEAR, m, 0).getDate();
+      let total = 0;
+      for(let dnum=1; dnum<=daysInMonth; dnum++) total += dayHours(p, new Date(YEAR, m-1, dnum));
+      grandTotal += total;
+      const weeks = daysInMonth/7;
+      const avg = total/weeks;
+      const cls = avg>46 ? ' class="watch-cell"' : '';
+      const deltaClass = avg > 44 ? 'delta-pos' : (avg < 44 ? 'delta-neg' : '');
+      cells += `<td class="num"${cls}>${total}h<br><span class="${deltaClass}" style="font-size:9px;">${formatDelta(avg)}</span></td>`;
+    }
+    const squad = AGEND.has(p) ? 'Agend.' : 'Operac.';
+    rows += `<tr><td>${p}</td><td>${squad}</td>${cells}<td class="num">${grandTotal}h</td></tr>`;
+  });
+  return rows;
+}
+
+// ================== RENDER: WEEKLY BREAKDOWN ==================
+function buildWeeklyTable(month, personFilter){
+  const weeks = weeksForMonth(YEAR, month);
+  let headerCells = '';
+  weeks.forEach((w, i)=>{
+    const isPartial = w.daysInRange.length < 7;
+    const label = `Sem ${i+1}` + (isPartial ? ' (parc.)' : '');
+    const rng = w.daysInRange.length ? `${w.daysInRange[0].getDate()}/${month} – ${w.daysInRange[w.daysInRange.length-1].getDate()}/${month}` : '-';
+    headerCells += `<th class="num">${label}<br><span class="wrange">${rng}</span></th>`;
+  });
+  let rows = '';
+  const people = personFilter ? [personFilter] : ALL_PEOPLE;
+  people.forEach(p=>{
+    let cells = '';
+    let total = 0;
+    weeks.forEach(w=>{
+      let wh = 0; let plantao=false;
+      w.daysInRange.forEach(d=>{ wh += dayHours(p,d); if(hasPlantao(p,d)) plantao=true; });
+      total += wh;
+      cells += `<td class="num${plantao?' has-plantao':''}">${wh}h</td>`;
+    });
+    const weeksInMonth = new Date(YEAR, month, 0).getDate()/7;
+    const avg = total/weeksInMonth;
+    const squad = AGEND.has(p) ? 'Agend.' : 'Operac.';
+    const statusClass = avg<=46 ? 'ok' : 'watch';
+    const statusLabel = avg<=46 ? 'OK' : 'Acima';
+    const deltaClass = avg > 44 ? 'delta-pos' : (avg < 44 ? 'delta-neg' : '');
+    rows += `<tr><td>${p}</td><td>${squad}</td><td class="num">${total}h</td><td class="num ${deltaClass}">${formatDelta(avg)}</td><td><span class="status ${statusClass}"><span class="dot"></span>${statusLabel}</span></td>${cells}</tr>`;
+  });
+  return {headerCells, rows};
+}
+
+// ================== SWAP (LIDER/MASTER) ==================
+function onSwap(dateISO, kind, slotIdx, newValue){
+  const arr = kind==='sat' ? satCrew[dateISO] : sunCrew[dateISO];
+  const oldValue = arr[slotIdx];
+  if(arr.includes(newValue) && newValue !== oldValue){
+    showToast(`${newValue} já está escalado(a) nesse mesmo dia. Escolha outra pessoa.`, true);
+    renderAll();
+    return;
+  }
+  if(newValue === oldValue) return;
+  arr[slotIdx] = newValue;
+  recomputeFolga();
+  changeHistory.push({ when: new Date(), dateISO, kind, oldValue, newValue });
+  renderAll();
+  saveState();
+}
+
+// ================== RENDER: LIDER/MASTER PANEL ==================
+function renderMonthPanel(month){
+  const calHtml = buildMonthCalendar(YEAR, month);
+  const totalRows = buildMonthlyTotalTable();
+  const {headerCells, rows} = buildWeeklyTable(month);
+  return `
+    <div class="kpis">
+      <div class="kpi"><div class="lbl">Mês</div><div class="val cyan">${MONTH_NAMES[month]}/2026</div></div>
+      <div class="kpi"><div class="lbl">Vagas sábado / domingo</div><div class="val amber">4 / 2</div></div>
+      <div class="kpi"><div class="lbl">Máx. dias corridos</div><div class="val green">6 dias</div></div>
+      <div class="kpi"><div class="lbl">Meta contratual</div><div class="val violet">44h/semana</div></div>
+    </div>
+    <div class="sec-title">Horário de referência — segunda a sexta</div>
+    <table class="report schedule-ref"><thead><tr><th>Colaborador</th><th>Código</th><th>Horário</th></tr></thead><tbody>${buildScheduleRefRows()}</tbody></table>
+    <div class="sec-title">Escala — ${MONTH_NAMES[month]} 2026 (clique nos nomes para trocar)</div>
+    <div class="cal-head"><div>Seg</div><div>Ter</div><div>Qua</div><div>Qui</div><div>Sex</div><div>Sáb</div><div>Dom</div></div>
+    <div class="cal-grid">${calHtml}</div>
+    <div class="legend">
+      <span><span class="swatch" style="background:#ff5c9e"></span> T3 do sábado (09h–18h)</span>
+      <span><span class="swatch" style="background:rgba(255,180,84,.35)"></span> Plantão de sábado</span>
+      <span><span class="swatch" style="background:rgba(139,123,255,.35)"></span> Plantão de domingo</span>
+      <span><span class="swatch" style="background:rgba(61,220,151,.35)"></span> Folga (trabalhou domingo)</span>
+      <span><span class="swatch" style="background:#10151d;border:1px solid #1b232f"></span> Turno normal</span>
+    </div>
+    ${renderHistoryForMonth(month)}
+    <div class="sec-title">Resumo de horas — ${MONTH_NAMES[month]} (quebra semanal)</div>
+    <table class="matrix"><thead><tr><th>Colaborador</th><th>Time</th><th class="num">Total mês</th><th class="num">Média/sem.</th><th>Situação</th>${headerCells}</tr></thead><tbody>${rows}</tbody></table>
+    <div class="sec-title">Resumo de horas — Ago a Dez/2026 (todos os meses)</div>
+    <table class="report"><thead><tr><th>Colaborador</th><th>Time</th><th class="num">Agosto</th><th class="num">Setembro</th><th class="num">Outubro</th><th class="num">Novembro</th><th class="num">Dezembro</th><th class="num">Total período</th></tr></thead><tbody>${totalRows}</tbody></table>
+    <div class="note"><b>Regras aplicadas:</b> sábado sempre mescla Agendamento e Operacional (4 pessoas); domingo com 2 de qualquer time; ninguém repete sábado+domingo no mesmo fim de semana; quem trabalha domingo folga na semana seguinte, garantindo no máximo 6 dias corridos de trabalho. Qualquer troca recalcula esta tabela automaticamente e já é salva no Firebase para todos verem.</div>
+  `;
+}
+
+// ================== RENDER: COP PANEL ==================
+function renderMonthPanelCOP(month, person){
+  const calHtml = buildMonthCalendarPersonal(YEAR, month, person);
+  const {headerCells, rows} = buildWeeklyTable(month, person);
+  const totalRows = buildMonthlyTotalTable(person);
+  const s = WEEKDAY_SCHEDULE[person];
+  return `
+    <div class="kpis">
+      <div class="kpi"><div class="lbl">Mês</div><div class="val cyan">${MONTH_NAMES[month]}/2026</div></div>
+      <div class="kpi"><div class="lbl">Meu horário padrão</div><div class="val amber">${s.code} · ${s.hours}</div></div>
+      <div class="kpi"><div class="lbl">Máx. dias corridos</div><div class="val green">6 dias</div></div>
+      <div class="kpi"><div class="lbl">Meta contratual</div><div class="val violet">44h/semana</div></div>
+    </div>
+    <div class="sec-title">Meu horário de referência — segunda a sexta</div>
+    <table class="report schedule-ref"><thead><tr><th>Colaborador</th><th>Código</th><th>Horário</th></tr></thead><tbody>${buildScheduleRefRows(person)}</tbody></table>
+    <div class="sec-title">Minha escala — ${MONTH_NAMES[month]} 2026</div>
+    <div class="cal-head"><div>Seg</div><div>Ter</div><div>Qua</div><div>Qui</div><div>Sex</div><div>Sáb</div><div>Dom</div></div>
+    <div class="cal-grid">${calHtml}</div>
+    <div class="legend">
+      <span><span class="swatch" style="background:rgba(255,180,84,.35)"></span> Plantão de sábado</span>
+      <span><span class="swatch" style="background:rgba(139,123,255,.35)"></span> Plantão de domingo</span>
+      <span><span class="swatch" style="background:rgba(61,220,151,.35)"></span> Folga (trabalhou domingo)</span>
+      <span><span class="swatch" style="background:#10151d;border:1px solid #1b232f"></span> Turno normal</span>
+    </div>
+    <div class="sec-title">Meu resumo de horas — ${MONTH_NAMES[month]} (quebra semanal)</div>
+    <table class="matrix"><thead><tr><th>Colaborador</th><th>Time</th><th class="num">Total mês</th><th class="num">Média/sem.</th><th>Situação</th>${headerCells}</tr></thead><tbody>${rows}</tbody></table>
+    <div class="sec-title">Meu resumo de horas — Ago a Dez/2026</div>
+    <table class="report"><thead><tr><th>Colaborador</th><th>Time</th><th class="num">Agosto</th><th class="num">Setembro</th><th class="num">Outubro</th><th class="num">Novembro</th><th class="num">Dezembro</th><th class="num">Total período</th></tr></thead><tbody>${totalRows}</tbody></table>
+    <div class="note">Este é o seu painel individual — você visualiza apenas os seus próprios turnos, plantões e folgas. Alterações na escala são feitas pelo Líder ou Master.</div>
+  `;
+}
+
+// ================== CONFIGURAÇÕES / FINANCEIRO (MASTER) ==================
+function renderConfigPanel(){
+  const rows = Object.keys(APP_USERS).map(u=>{
+    const c = APP_USERS[u];
+    const perfil = c.role==='cop' ? 'COP' : (c.role==='lider' ? 'Líder' : 'Master');
+    const visualiza = c.role==='cop' ? `Somente o painel de ${c.person}` : (c.role==='lider' ? 'Escala de todos os COPs (com edição)' : 'Escala de todos + Configurações e Financeiro');
+    return `<tr><td>${u}</td><td>${perfil}</td><td>${visualiza}</td></tr>`;
+  }).join('');
+  return `
+    <div class="sec-title">Configurações</div>
+    <div class="note"><b>Senha de gestor (limpar histórico de trocas):</b> definida no código como <span class="code-chip">${MANAGER_PIN}</span>. Para alterar, edite a constante <b>MANAGER_PIN</b> no arquivo.</div>
+    <div class="sec-title">Usuários com acesso</div>
+    <table class="report"><thead><tr><th>Usuário</th><th>Perfil</th><th>Visualiza</th></tr></thead><tbody>${rows}</tbody></table>
+    <div class="note">Senhas de login agora ficam no <b>Firebase Authentication</b>, não no código. Para resetar a senha de alguém (ex: esqueceu), use o console do Firebase → Authentication → clique no usuário → "Reset password", ou apague a conta de lá para que a pessoa crie uma nova no próximo acesso.</div>
+    <div class="note warn"><b>Regras de segurança do Firestore:</b> confirme que suas regras exigem <span class="code-chip">request.auth != null</span> para leitura e restringem a escrita da coleção <span class="code-chip">schedule</span> aos e-mails de líder/master. Veja o texto de regras completo na mensagem que acompanha este arquivo.</div>
+  `;
+}
+function renderFinanceiroPanel(){
+  return `<div class="sec-title">Financeiro</div><div class="note">Área reservada para informações financeiras (ex: custo de hora extra, folha por colaborador, orçamento do time). Nenhum dado foi adicionado ainda — este espaço está pronto para receber esse conteúdo quando você definir o que deve aparecer aqui.</div>`;
+}
+
+// ================== HISTORY ==================
+const DOW_NAMES = ['Segunda','Terça','Quarta','Quinta','Sexta','Sábado','Domingo'];
+function renderHistoryForMonth(month){
+  const entries = changeHistory.map((h, idx) => ({...h, idx})).filter(h => fromISO(h.dateISO).getMonth()+1 === month).reverse();
+  if(entries.length === 0){
+    return `<div class="history-block"><div class="history-title">📋 Histórico de alterações — ${MONTH_NAMES[month]}</div><div class="history-empty">Nenhuma troca feita em ${MONTH_NAMES[month]} ainda. Toda alteração que você fizer na escala acima aparece aqui.</div></div>`;
+  }
+  const rows = entries.map(h=>{
+    const d = fromISO(h.dateISO);
+    const dowLabel = DOW_NAMES[dow(d)];
+    const dateLabel = `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`;
+    const kindLabel = h.kind==='sat' ? 'Sábado' : 'Domingo';
+    const whenLabel = h.when.toLocaleString('pt-BR');
+    return `<tr><td>${whenLabel}</td><td>${dateLabel} (${dowLabel})</td><td>${kindLabel}</td><td>${h.oldValue}</td><td class="arrow">→</td><td>${h.newValue}</td></tr>`;
+  }).join('');
+  return `
+    <div class="history-block">
+      <div class="history-title">📋 Histórico de alterações — ${MONTH_NAMES[month]} <span class="history-count">${entries.length} troca${entries.length>1?'s':''}</span></div>
+      <table class="report history-table"><thead><tr><th>Quando</th><th>Dia afetado</th><th>Plantão</th><th>Antes</th><th></th><th>Depois</th></tr></thead><tbody>${rows}</tbody></table>
+      <div class="clear-history-area" id="clear-area-${month}">
+        <button class="tab-btn" style="color:var(--red);border-color:rgba(255,107,107,.4);" onclick="toggleClearForm(${month})">Limpar todo o histórico</button>
+      </div>
+    </div>
+  `;
+}
+function toggleClearForm(month){
+  const area = document.getElementById('clear-area-'+month);
+  area.innerHTML = `
+    <div class="clear-confirm">
+      <span>Digite a senha de gestor para confirmar:</span>
+      <input type="password" id="pin-${month}" placeholder="Senha" onkeydown="if(event.key==='Enter') confirmClearHistory(${month})">
+      <button class="tab-btn" style="color:var(--green);border-color:rgba(61,220,151,.4);" onclick="confirmClearHistory(${month})">Confirmar</button>
+      <button class="tab-btn" onclick="renderAll()">Cancelar</button>
+    </div>
+  `;
+  document.getElementById('pin-'+month).focus();
+}
+function confirmClearHistory(month){
+  const input = document.getElementById('pin-'+month);
+  if(input.value === MANAGER_PIN){
+    changeHistory = [];
+    showToast('Histórico apagado com sucesso.', false);
+    renderAll();
+    saveState();
+  } else {
+    showToast('Senha incorreta — histórico não foi apagado.', true);
+  }
+}
+
+// ================== TABS / RENDER ==================
+function buildTabs(){
+  const bar = document.getElementById('tabsBar');
+  let tabs = [8,9,10,11,12].map(m=>({id:String(m), label:MONTH_NAMES[m].toUpperCase()}));
+  if(currentUser.role === 'master'){
+    tabs.push({id:'config', label:'⚙️ CONFIGURAÇÕES'});
+    tabs.push({id:'financeiro', label:'💰 FINANCEIRO'});
+  }
+  bar.innerHTML = tabs.map((t,i)=>`<button class="tab-btn${i===0?' active':''}" data-tab="${t.id}" onclick="switchTab('${t.id}')">${t.label}</button>`).join('');
+}
+function switchTab(tabId){
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.toggle('active', b.dataset.tab===String(tabId)));
+  document.querySelectorAll('.panel-view').forEach(p=>p.classList.toggle('active', p.id==='panel-'+tabId));
+}
+function renderAll(){
+  const activeTab = document.querySelector('.tab-btn.active')?.dataset.tab || '8';
+  const container = document.getElementById('monthPanels');
+  container.innerHTML = '';
+  [8,9,10,11,12].forEach(m=>{
+    const div = document.createElement('div');
+    div.className = 'panel-view' + (String(m)===activeTab ? ' active' : '');
+    div.id = 'panel-'+m;
+    div.innerHTML = (currentUser.role === 'cop') ? renderMonthPanelCOP(m, currentUser.person) : renderMonthPanel(m);
+    container.appendChild(div);
+  });
+  if(currentUser.role === 'master'){
+    const configDiv = document.createElement('div');
+    configDiv.className = 'panel-view' + (activeTab==='config' ? ' active' : '');
+    configDiv.id = 'panel-config';
+    configDiv.innerHTML = renderConfigPanel();
+    container.appendChild(configDiv);
+
+    const finDiv = document.createElement('div');
+    finDiv.className = 'panel-view' + (activeTab==='financeiro' ? ' active' : '');
+    finDiv.id = 'panel-financeiro';
+    finDiv.innerHTML = renderFinanceiroPanel();
+    container.appendChild(finDiv);
+  }
+}
+
+// ================== FIRESTORE: DADOS COMPARTILHADOS DA ESCALA ==================
+const SCHEDULE_DOC = db.collection('schedule').doc('current');
+
+function applyRemoteData(data){
+  if(!data) return false;
+  if(data.satCrew && data.sunCrew){
+    satCrew = data.satCrew;
+    sunCrew = data.sunCrew;
+    satT3 = data.satT3 || {};
+    changeHistory = (data.changeHistory || []).map(h => ({...h, when: h.when instanceof Date ? h.when : (h.when && h.when.toDate ? h.when.toDate() : new Date(h.when))}));
+    return true;
+  }
+  return false;
+}
+
+async function saveState(){
+  try{
+    const payload = {
+      satCrew, sunCrew, satT3,
+      changeHistory: changeHistory.map(h => ({...h, when: h.when.toISOString()})),
+      savedAt: new Date().toISOString(),
+    };
+    await SCHEDULE_DOC.set(payload);
+  }catch(err){
+    console.error('Firestore save error:', err);
+    showToast('Falha ao salvar no Firebase — verifique as regras de segurança do Firestore.', true);
+  }
+}
+
+async function loadStateOnce(){
+  try{
+    const snap = await SCHEDULE_DOC.get();
+    return applyRemoteData(snap.exists ? snap.data() : null);
+  }catch(err){
+    console.error('Firestore load error:', err);
+    return false;
+  }
+}
+
+function exportState(){
+  const payload = { satCrew, sunCrew, satT3, changeHistory: changeHistory.map(h => ({...h, when: h.when.toISOString()})) };
+  const box = document.getElementById('exportBox');
+  const ta = document.getElementById('exportTextarea');
+  ta.value = JSON.stringify(payload, null, 2);
+  box.style.display = 'block';
+  ta.focus();
+  ta.select();
+  showToast('Estado exportado — copie o texto abaixo se quiser guardar um backup.', false);
+}
+
+// ================== BOOT (após login) ==================
+async function bootDashboard(){
+  const loaded = await loadStateOnce();
+  recomputeFolga();
+  buildTabs();
+  renderAll();
+  if(loaded) showToast('Escala carregada do Firebase.', false);
+  else showToast('Nenhuma escala salva ainda no Firebase — mostrando dados padrão.', false);
+
+  // Mantém todo mundo sincronizado em tempo real: qualquer troca feita por
+  // Líder/Master aparece automaticamente para quem estiver com a tela aberta.
+  unsubscribeSchedule = SCHEDULE_DOC.onSnapshot(snap=>{
+    if(!snap.exists) return;
+    const changed = applyRemoteData(snap.data());
+    if(changed){
+      recomputeFolga();
+      renderAll();
+    }
+  }, err=>{
+    console.error('Snapshot listener error:', err);
+  });
+}
+
+// ================== INIT (tela de login) ==================
+if(!FIREBASE_CONFIGURED){
+  const w = document.getElementById('configWarning');
+  w.innerHTML = '⚠️ O Firebase ainda não foi configurado neste arquivo. Preencha o objeto <b>firebaseConfig</b> no início do &lt;script&gt; com os dados do seu projeto antes de usar.';
+  w.style.display = 'block';
+}
+populateLoginSelect(loginCategory);
+</script>
+</body>
+</html>
