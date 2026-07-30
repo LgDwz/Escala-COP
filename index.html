@@ -192,7 +192,13 @@
 
       <label class="login-label">Senha</label>
       <input id="loginPass" type="password" class="login-field" placeholder="••••••••" onkeydown="if(event.key==='Enter') attemptLogin()">
-      <div class="login-hint">🔐 Primeiro acesso? Digite a senha que você quer usar a partir de agora — ela será criada automaticamente (mínimo 6 caracteres).</div>
+      <div class="login-hint" id="loginHintCop">🔐 Primeiro acesso? Digite a senha que você quer usar a partir de agora — ela será criada automaticamente (mínimo 6 caracteres).</div>
+
+      <div id="liderCodeWrap" style="display:none;">
+        <label class="login-label">Código de liderança</label>
+        <input id="liderCode" type="password" class="login-field" placeholder="Código compartilhado com a liderança" onkeydown="if(event.key==='Enter') attemptLogin()">
+        <div class="login-hint">🔒 Exigido só pra contas de Líder/Master, pra impedir que qualquer pessoa crie um desses acessos.</div>
+      </div>
 
       <div id="loginError"></div>
       <div id="loginInfo"></div>
@@ -302,6 +308,9 @@ function setLoginCategory(cat){
   document.getElementById('catLiderBtn').classList.toggle('active', cat==='lideranca');
   populateLoginSelect(cat);
   document.getElementById('loginPass').value = '';
+  document.getElementById('liderCode').value = '';
+  document.getElementById('liderCodeWrap').style.display = (cat === 'lideranca') ? 'block' : 'none';
+  document.getElementById('loginHintCop').style.display = (cat === 'cop') ? 'block' : 'none';
   document.getElementById('loginError').style.display = 'none';
   document.getElementById('loginInfo').style.display = 'none';
 }
@@ -350,6 +359,18 @@ async function attemptLogin(){
     errEl.textContent = 'Digite uma senha com pelo menos 6 caracteres.';
     errEl.style.display = 'block';
     return;
+  }
+
+  // Contas de Líder/Master exigem o código de liderança, checado ANTES de
+  // qualquer leitura/escrita no Firestore — sem isso, ninguém consegue nem
+  // criar nem entrar num desses acessos, mesmo escolhendo a categoria certa.
+  if(cred.role !== 'cop'){
+    const liderCode = document.getElementById('liderCode').value;
+    if(liderCode !== MANAGER_PIN){
+      errEl.textContent = 'Código de liderança incorreto.';
+      errEl.style.display = 'block';
+      return;
+    }
   }
 
   const btn = document.getElementById('loginBtn');
