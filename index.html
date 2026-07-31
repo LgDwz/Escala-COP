@@ -748,42 +748,44 @@ function dayCellPersonal(d, person){
   const iso = toISO(d);
   const w = dow(d);
   if(d < START || d > END) return '<div class="day empty"></div>';
+  const todayISO = new Date().toISOString().slice(0,10);
+  const reqBtn = iso >= todayISO ? `<button type="button" class="day-gear-btn" title="Solicitar algo pra esse dia" onclick="openRequestFor('${iso}')">📝</button>` : '';
   const manual = getManualEvent(iso, person);
   if(manual === 'folga'){
-    return `<div class="day folga"><div class="num">${d.getDate()}</div><div class="tag">Folga</div></div>`;
+    return `<div class="day folga">${reqBtn}<div class="num">${d.getDate()}</div><div class="tag">Folga</div></div>`;
   }
   if(manual === 'falta'){
-    return `<div class="day falta"><div class="num">${d.getDate()}</div><div class="tag">Falta</div></div>`;
+    return `<div class="day falta">${reqBtn}<div class="num">${d.getDate()}</div><div class="tag">Falta</div></div>`;
   }
   if(manual === 'atestado'){
-    return `<div class="day atestado"><div class="num">${d.getDate()}</div><div class="tag">Atestado</div></div>`;
+    return `<div class="day atestado">${reqBtn}<div class="num">${d.getDate()}</div><div class="tag">Atestado</div></div>`;
   }
   if(manual === 'homeoffice'){
-    return `<div class="day homeoffice"><div class="num">${d.getDate()}</div><div class="tag">Home Office</div></div>`;
+    return `<div class="day homeoffice">${reqBtn}<div class="num">${d.getDate()}</div><div class="tag">Home Office</div></div>`;
   }
   const early = getEarlyLeave(iso, person);
   if(early){
-    return `<div class="day atestado"><div class="num">${d.getDate()}</div><div class="tag">Saída às ${early.exitTime} (${early.hoursWorked}h)</div></div>`;
+    return `<div class="day atestado">${reqBtn}<div class="num">${d.getDate()}</div><div class="tag">Saída às ${early.exitTime} (${early.hoursWorked}h)</div></div>`;
   }
   if(w===5){
     if((satCrew[iso]||[]).includes(person)){
       const idx = satCrew[iso].indexOf(person);
       const isT3 = satT3[iso] === idx;
-      return `<div class="day sat"><div class="num">${d.getDate()}</div><div class="tag">${isT3 ? 'Plantão sábado (T3)' : 'Plantão sábado'}</div></div>`;
+      return `<div class="day sat">${reqBtn}<div class="num">${d.getDate()}</div><div class="tag">${isT3 ? 'Plantão sábado (T3)' : 'Plantão sábado'}</div></div>`;
     }
-    return `<div class="day normal"><div class="num">${d.getDate()}</div><div class="tag">Sem plantão</div></div>`;
+    return `<div class="day normal">${reqBtn}<div class="num">${d.getDate()}</div><div class="tag">Sem plantão</div></div>`;
   }
   if(w===6){
     if((sunCrew[iso]||[]).includes(person)){
-      return `<div class="day sun"><div class="num">${d.getDate()}</div><div class="tag">Plantão domingo</div></div>`;
+      return `<div class="day sun">${reqBtn}<div class="num">${d.getDate()}</div><div class="tag">Plantão domingo</div></div>`;
     }
-    return `<div class="day normal"><div class="num">${d.getDate()}</div><div class="tag">Sem plantão</div></div>`;
+    return `<div class="day normal">${reqBtn}<div class="num">${d.getDate()}</div><div class="tag">Sem plantão</div></div>`;
   }
   if(hasFolga(iso, person)){
-    return `<div class="day folga"><div class="num">${d.getDate()}</div><div class="tag">Folga</div></div>`;
+    return `<div class="day folga">${reqBtn}<div class="num">${d.getDate()}</div><div class="tag">Folga</div></div>`;
   }
   const s = WEEKDAY_SCHEDULE[person];
-  return `<div class="day normal"><div class="num">${d.getDate()}</div><div class="tag">${s.code} · ${s.hours}</div></div>`;
+  return `<div class="day normal">${reqBtn}<div class="num">${d.getDate()}</div><div class="tag">${s.code} · ${s.hours}</div></div>`;
 }
 function buildMonthCalendarPersonal(year, month, person){
   const first = new Date(year, month-1, 1);
@@ -876,6 +878,17 @@ function appliedAsLabel(appliedAs){
 function toggleReqExitTime(checked){
   const wrap = document.getElementById('reqExitTimeWrap');
   if(wrap) wrap.style.display = checked ? 'block' : 'none';
+}
+
+function openRequestFor(dateISO){
+  switchTab('solicitacoes');
+  const dateInput = document.getElementById('reqDate');
+  if(dateInput){
+    dateInput.value = dateISO;
+    dateInput.scrollIntoView({behavior:'smooth', block:'center'});
+  }
+  const descEl = document.getElementById('reqDescription');
+  if(descEl) descEl.focus();
 }
 
 function submitRequest(){
