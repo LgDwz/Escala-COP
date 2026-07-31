@@ -834,26 +834,27 @@ function whoLabel(){
 }
 
 // ================== SOLICITAÇÕES DOS COPS ==================
-function requestTypeLabel(type){
-  if(type === 'saida_antecipada') return 'Sair mais cedo';
-  if(type === 'folga') return 'Folga';
-  return 'Atestado';
-}
 function requestStatusBadge(status){
   if(status === 'aprovado') return `<span class="status ok"><span class="dot"></span>Aprovado</span>`;
   if(status === 'rejeitado') return `<span class="status rejected"><span class="dot"></span>Rejeitado</span>`;
   return `<span class="status watch"><span class="dot"></span>Pendente</span>`;
 }
-function toggleReqExitTime(type){
+function appliedAsLabel(appliedAs){
+  if(appliedAs === 'folga') return 'Aplicado como Folga';
+  if(appliedAs === 'atestado') return 'Aplicado como Atestado';
+  if(appliedAs === 'horario') return 'Horas recalculadas pelo horário';
+  return 'Sem ajuste automático';
+}
+function toggleReqExitTime(checked){
   const wrap = document.getElementById('reqExitTimeWrap');
-  if(wrap) wrap.style.display = (type === 'saida_antecipada') ? 'block' : 'none';
+  if(wrap) wrap.style.display = checked ? 'block' : 'none';
 }
 
 function submitRequest(){
   const dateInput = document.getElementById('reqDate').value;
-  const type = document.getElementById('reqType').value;
+  const hasExitTime = document.getElementById('reqHasExitTime').checked;
   const exitTimeEl = document.getElementById('reqExitTime');
-  const exitTime = exitTimeEl ? exitTimeEl.value : '';
+  const exitTime = hasExitTime && exitTimeEl ? exitTimeEl.value : '';
   const descEl = document.getElementById('reqDescription');
   const description = descEl.value.trim();
   const errEl = document.getElementById('reqError');
@@ -862,25 +863,27 @@ function submitRequest(){
   if(!dateInput){ errEl.textContent = 'Escolha uma data.'; errEl.style.display='block'; return; }
   const d = fromISO(dateInput);
   if(d < START || d > END){ errEl.textContent = 'Escolha uma data dentro do período (Ago–Dez/2026).'; errEl.style.display='block'; return; }
-  if(type === 'saida_antecipada' && !exitTime){ errEl.textContent = 'Informe o horário que pretende sair.'; errEl.style.display='block'; return; }
-  if(!description){ errEl.textContent = 'Escreva uma descrição explicando o motivo.'; errEl.style.display='block'; return; }
+  if(hasExitTime && !exitTime){ errEl.textContent = 'Informe o horário que pretende sair, ou desmarque a opção.'; errEl.style.display='block'; return; }
+  if(!description){ errEl.textContent = 'Escreva sua solicitação.'; errEl.style.display='block'; return; }
 
   requests.push({
     id: 'req_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
     dateISO: dateInput,
     person: currentUser.person,
-    type,
     description,
-    exitTime: type === 'saida_antecipada' ? exitTime : null,
+    exitTime: hasExitTime ? exitTime : null,
     status: 'pendente',
     createdAt: new Date().toISOString(),
     respondedBy: null,
     respondedAt: null,
     responseNote: null,
+    appliedAs: null,
   });
 
   descEl.value = '';
   document.getElementById('reqDate').value = '';
+  document.getElementById('reqHasExitTime').checked = false;
+  toggleReqExitTime(false);
   showToast('Solicitação enviada! Aguardando aprovação.', false);
   renderAll();
   saveState();
@@ -889,11 +892,24 @@ function submitRequest(){
 function askRespondRequest(reqId, decision){
   const area = document.getElementById('reqConfirm-'+reqId);
   if(!area) return;
+  const req = requests.find(r => r.id === reqId);
   const label = decision === 'aprovado' ? 'Aprovar' : 'Rejeitar';
   const color = decision === 'aprovado' ? 'var(--green)' : 'var(--red)';
   const borderColor = decision === 'aprovado' ? 'rgba(61,220,151,.4)' : 'rgba(255,107,107,.4)';
+
+  const applyAsField = decision === 'aprovado' ? `
+    <span>Como aplicar essa aprovação?</span>
+    <select id="reqApplyAs-${reqId}" class="login-field" style="margin-bottom:10px;">
+      <option value="nenhum">Nenhum ajuste automático (só aprovar)</option>
+      <option value="folga">Marcar como Folga</option>
+      <option value="atestado">Marcar como Atestado</option>
+      ${req && req.exitTime ? `<option value="horario">Recalcular horas pelo horário informado (${req.exitTime})</option>` : ''}
+    </select>
+  ` : '';
+
   area.innerHTML = `
     <div class="clear-confirm" style="flex-direction:column;align-items:stretch;">
+      ${applyAsField}
       <span>Observação (opcional) — o COP também vê isso:</span>
       <textarea id="reqNote-${reqId}" rows="2" style="width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:6px;padding:8px;font-size:12px;margin:6px 0;font-family:'Space Grotesk',sans-serif;"></textarea>
       <div style="display:flex;gap:8px;">
@@ -909,19 +925,22 @@ function confirmRespondRequest(reqId, decision){
   if(!req) return;
   const noteEl = document.getElementById('reqNote-'+reqId);
   const note = noteEl ? noteEl.value.trim() : '';
+  const applyAsEl = document.getElementById('reqApplyAs-'+reqId);
+  const applyAs = applyAsEl ? applyAsEl.value : 'nenhum';
 
   req.status = decision;
   req.respondedBy = whoLabel();
   req.respondedAt = new Date().toISOString();
   req.responseNote = note || null;
+  req.appliedAs = decision === 'aprovado' ? applyAs : null;
 
   if(decision === 'aprovado'){
-    if(req.type === 'folga' || req.type === 'atestado'){
+    if(applyAs === 'folga' || applyAs === 'atestado'){
       if(!manualEvents[req.dateISO]) manualEvents[req.dateISO] = [];
       if(!manualEvents[req.dateISO].some(e => e.person === req.person)){
-        manualEvents[req.dateISO].push({ person: req.person, type: req.type });
+        manualEvents[req.dateISO].push({ person: req.person, type: applyAs });
       }
-    } else if(req.type === 'saida_antecipada'){
+    } else if(applyAs === 'horario' && req.exitTime){
       const startMin = getShiftStartMinutes(req.person);
       const exitMin = timeStrToMinutes(req.exitTime);
       let hrs = Math.round(((exitMin - startMin) / 60) * 10) / 10;
@@ -934,8 +953,8 @@ function confirmRespondRequest(reqId, decision){
 
   changeHistory.push({
     when: new Date(), dateISO: req.dateISO, kind: 'solicitacao',
-    oldValue: `${req.person} — ${requestTypeLabel(req.type)} (pendente)`,
-    newValue: decision === 'aprovado' ? 'Aprovada' : 'Rejeitada',
+    oldValue: `${req.person} — solicitação (pendente)`,
+    newValue: decision === 'aprovado' ? `Aprovada (${appliedAsLabel(req.appliedAs)})` : 'Rejeitada',
     by: whoLabel(),
   });
 
@@ -1037,36 +1056,34 @@ function renderMyRequestsSection(person){
     const dateLabel = `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`;
     const horario = r.exitTime ? r.exitTime : '—';
     const noteRow = r.responseNote ? `<div style="margin-top:4px;font-size:11px;color:var(--muted);"><b>Resposta:</b> ${r.responseNote}</div>` : '';
+    const appliedRow = r.status === 'aprovado' ? `<div style="margin-top:4px;font-size:10.5px;color:var(--cyan);">${appliedAsLabel(r.appliedAs)}</div>` : '';
     return `<tr>
       <td>${dateLabel}</td>
-      <td>${requestTypeLabel(r.type)}</td>
       <td>${horario}</td>
-      <td>${r.description}${noteRow}</td>
+      <td>${r.description}${noteRow}${appliedRow}</td>
       <td>${requestStatusBadge(r.status)}</td>
     </tr>`;
   }).join('');
 
   return `
     <div class="sec-title">📝 Minhas solicitações</div>
-    <div class="note">Precisa sair mais cedo, tirar uma folga ou avisar um atestado num dia específico? Envie a solicitação aqui — o Líder ou Master aprova ou rejeita, e você vê a resposta abaixo.</div>
+    <div class="note">Precisa sair mais cedo, tirar uma folga, avisar um atestado ou qualquer outra coisa num dia específico? Escreva aqui — o Líder ou Master aprova ou rejeita, e você vê a resposta abaixo.</div>
     <div style="background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 18px;margin-bottom:20px;">
       <label class="login-label">Data</label>
       <input type="date" id="reqDate" class="login-field" min="2026-08-01" max="2026-12-31">
 
-      <label class="login-label">Tipo de solicitação</label>
-      <select id="reqType" class="login-field" onchange="toggleReqExitTime(this.value)">
-        <option value="saida_antecipada">Sair mais cedo</option>
-        <option value="folga">Folga</option>
-        <option value="atestado">Atestado</option>
-      </select>
+      <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--text);margin-bottom:10px;cursor:pointer;">
+        <input type="checkbox" id="reqHasExitTime" onchange="toggleReqExitTime(this.checked)">
+        Vou sair mais cedo em um horário específico
+      </label>
 
-      <div id="reqExitTimeWrap">
+      <div id="reqExitTimeWrap" style="display:none;">
         <label class="login-label">Horário que pretende sair</label>
         <input type="time" id="reqExitTime" class="login-field">
       </div>
 
-      <label class="login-label">Descrição (explique o motivo)</label>
-      <textarea id="reqDescription" rows="3" class="login-field" style="resize:vertical;font-family:'Space Grotesk',sans-serif;" placeholder="Ex: preciso sair às 15h por causa de uma consulta médica"></textarea>
+      <label class="login-label">Sua solicitação</label>
+      <textarea id="reqDescription" rows="3" class="login-field" style="resize:vertical;font-family:'Space Grotesk',sans-serif;" placeholder="Ex: preciso de atestado médico por causa de uma consulta / preciso sair mais cedo por motivo pessoal / gostaria de folga nesse dia"></textarea>
 
       <div id="reqError" style="display:none;color:var(--red);font-size:11.5px;font-family:'JetBrains Mono',monospace;margin-bottom:12px;"></div>
 
@@ -1074,7 +1091,7 @@ function renderMyRequestsSection(person){
     </div>
     ${myReqs.length ? `
     <table class="report">
-      <thead><tr><th>Data</th><th>Tipo</th><th>Horário</th><th>Descrição</th><th>Status</th></tr></thead>
+      <thead><tr><th>Data</th><th>Horário</th><th>Solicitação</th><th>Status</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>` : `<div class="note">Você ainda não enviou nenhuma solicitação.</div>`}
   `;
@@ -1092,7 +1109,6 @@ function renderRequestsPanel(){
     return `<tr>
       <td>${r.person}</td>
       <td>${dateLabel}</td>
-      <td>${requestTypeLabel(r.type)}</td>
       <td>${horario}</td>
       <td>${r.description}</td>
       <td>
@@ -1107,12 +1123,12 @@ function renderRequestsPanel(){
     const d = fromISO(r.dateISO);
     const dateLabel = `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`;
     const horario = r.exitTime ? r.exitTime : '—';
+    const appliedRow = r.status === 'aprovado' ? `<div style="margin-top:4px;font-size:10.5px;color:var(--cyan);">${appliedAsLabel(r.appliedAs)}</div>` : '';
     return `<tr>
       <td>${r.person}</td>
       <td>${dateLabel}</td>
-      <td>${requestTypeLabel(r.type)}</td>
       <td>${horario}</td>
-      <td>${r.description}${r.responseNote ? `<div style="margin-top:4px;font-size:11px;color:var(--muted);"><b>Resposta:</b> ${r.responseNote}</div>` : ''}</td>
+      <td>${r.description}${r.responseNote ? `<div style="margin-top:4px;font-size:11px;color:var(--muted);"><b>Resposta:</b> ${r.responseNote}</div>` : ''}${appliedRow}</td>
       <td>${requestStatusBadge(r.status)}</td>
       <td style="font-size:11px;color:var(--muted);">${r.respondedBy || '—'}</td>
     </tr>`;
@@ -1122,18 +1138,18 @@ function renderRequestsPanel(){
     <div class="sec-title">📝 Solicitações pendentes ${pending.length ? `<span class="history-count">${pending.length}</span>` : ''}</div>
     ${pending.length ? `
     <table class="report">
-      <thead><tr><th>COP</th><th>Data</th><th>Tipo</th><th>Horário</th><th>Descrição</th><th>Ação</th></tr></thead>
+      <thead><tr><th>COP</th><th>Data</th><th>Horário</th><th>Solicitação</th><th>Ação</th></tr></thead>
       <tbody>${pendingRows}</tbody>
     </table>` : `<div class="note">Nenhuma solicitação pendente no momento.</div>`}
 
     <div class="sec-title">Histórico de solicitações</div>
     ${resolved.length ? `
     <table class="report">
-      <thead><tr><th>COP</th><th>Data</th><th>Tipo</th><th>Horário</th><th>Descrição</th><th>Status</th><th>Respondido por</th></tr></thead>
+      <thead><tr><th>COP</th><th>Data</th><th>Horário</th><th>Solicitação</th><th>Status</th><th>Respondido por</th></tr></thead>
       <tbody>${resolvedRows}</tbody>
     </table>` : `<div class="note">Nenhuma solicitação respondida ainda.</div>`}
 
-    <div class="note">Ao aprovar uma solicitação de <b>Folga</b> ou <b>Atestado</b>, o sistema já registra isso no dia certo automaticamente. Ao aprovar <b>Sair mais cedo</b>, as horas daquele dia são recalculadas com base no horário informado, sem precisar editar nada manualmente.</div>
+    <div class="note">Ao aprovar, você escolhe como aplicar: marcar como <b>Folga</b>, <b>Atestado</b>, recalcular as horas pelo <b>horário informado</b> (se a pessoa marcou a opção de sair mais cedo), ou aprovar sem nenhum ajuste automático.</div>
   `;
 }
 
