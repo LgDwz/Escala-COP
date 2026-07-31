@@ -1150,7 +1150,41 @@ function renderRequestsPanel(){
     </table>` : `<div class="note">Nenhuma solicitação respondida ainda.</div>`}
 
     <div class="note">Ao aprovar, você escolhe como aplicar: marcar como <b>Folga</b>, <b>Atestado</b>, recalcular as horas pelo <b>horário informado</b> (se a pessoa marcou a opção de sair mais cedo), ou aprovar sem nenhum ajuste automático.</div>
+
+    ${currentUser.role === 'master' ? `
+    <div class="clear-history-area" id="clear-area-requests">
+      <button class="tab-btn" style="color:var(--red);border-color:rgba(255,107,107,.4);" onclick="toggleClearRequestsForm()">Limpar todo o histórico de solicitações</button>
+    </div>` : ''}
   `;
+}
+
+function toggleClearRequestsForm(){
+  const area = document.getElementById('clear-area-requests');
+  area.innerHTML = `
+    <div class="clear-confirm">
+      <span>Digite a senha de gestor para confirmar:</span>
+      <input type="password" id="pin-requests" placeholder="Senha" onkeydown="if(event.key==='Enter') confirmClearRequests()">
+      <button class="tab-btn" style="color:var(--green);border-color:rgba(61,220,151,.4);" onclick="confirmClearRequests()">Confirmar</button>
+      <button class="tab-btn" onclick="renderAll()">Cancelar</button>
+    </div>
+  `;
+  document.getElementById('pin-requests').focus();
+}
+
+function confirmClearRequests(){
+  if(!currentUser || currentUser.role !== 'master'){
+    showToast('Somente o Master pode limpar o histórico de solicitações.', true);
+    return;
+  }
+  const input = document.getElementById('pin-requests');
+  if(input.value === MANAGER_PIN){
+    requests = [];
+    showToast('Histórico de solicitações apagado com sucesso.', false);
+    renderAll();
+    saveState();
+  } else {
+    showToast('Senha incorreta — histórico não foi apagado.', true);
+  }
 }
 
 function renderPasswordManagerPanel(){
