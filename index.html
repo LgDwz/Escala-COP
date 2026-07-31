@@ -297,7 +297,7 @@ const MANAGER_PIN = '2026COP'; // senha de gestor para limpar histórico — alt
 
 const WEEKDAY_SCHEDULE = {
   'Eduardo': {code:'T4', hours:'11h às 20h'},
-  'Bárbara': {code:'T3', hours:'09h às 18h'},
+  'Bárbara': {code:'T3', hours:'08h às 17:30'},
   'Julia':   {code:'T2', hours:'08h às 17h'},
   'Luana':   {code:'T1', hours:'07:30 às 16:30'},
   'Brian':   {code:'T3', hours:'09h às 18h'},
@@ -553,10 +553,18 @@ function weeksForMonth(year, month){
 }
 
 // ================== RENDER: CALENDAR (LIDER/MASTER — editável) ==================
+function formatHoursMinutes(decimalHours){
+  const totalMinutes = Math.round(decimalHours * 60);
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
+  if(h === 0) return `${m}min`;
+  if(m === 0) return `${h}h`;
+  return `${h}h${m}min`;
+}
 function formatDelta(avg){
   const delta = avg - 44;
   const sign = delta > 0 ? '+' : (delta < 0 ? '-' : '');
-  return `${sign}${Math.abs(delta).toFixed(1)}h`;
+  return `${sign}${formatHoursMinutes(Math.abs(delta))}`;
 }
 function buildScheduleRefRows(personFilter){
   const people = personFilter ? [personFilter] : ALL_PEOPLE;
@@ -847,7 +855,7 @@ function buildWeeklyTable(month, personFilter){
     const squad = AGEND.has(p) ? 'Agend.' : 'Operac.';
     const deficit = 44 - avg;
     const statusClass = avg < 44 ? 'rejected' : (avg > 46 ? 'watch' : 'ok');
-    const statusLabel = avg < 44 ? `Devendo ${deficit.toFixed(1)}h` : (avg > 46 ? 'Acima' : 'OK');
+    const statusLabel = avg < 44 ? `Devendo ${formatHoursMinutes(deficit)}` : (avg > 46 ? 'Acima' : 'OK');
     const deltaClass = avg > 44 ? 'delta-pos' : (avg < 44 ? 'delta-neg' : '');
     rows += `<tr><td>${p}</td><td>${squad}</td><td class="num">${total}h</td><td class="num ${deltaClass}">${formatDelta(avg)}</td><td><span class="status ${statusClass}"><span class="dot"></span>${statusLabel}</span></td>${cells}</tr>`;
   });
@@ -1005,8 +1013,8 @@ function updateReqPreview(reqId){
   const delta = projected - 44;
 
   const deltaText = delta < 0
-    ? `<span style="color:var(--red);">faltam ${Math.abs(delta).toFixed(1)}h pra bater a meta de 44h</span>`
-    : (delta > 0 ? `<span style="color:var(--amber);">${delta.toFixed(1)}h acima da meta de 44h</span>` : `<span style="color:var(--green);">exatamente na meta de 44h</span>`);
+    ? `<span style="color:var(--red);">faltam ${formatHoursMinutes(Math.abs(delta))} pra bater a meta de 44h</span>`
+    : (delta > 0 ? `<span style="color:var(--amber);">${formatHoursMinutes(delta)} acima da meta de 44h</span>` : `<span style="color:var(--green);">exatamente na meta de 44h</span>`);
 
   previewEl.innerHTML = `<span style="font-size:11.5px;color:var(--text);">Essa semana, <b>${req.person}</b> passaria de <b>${weekTotal}h</b> para <b>${projected}h</b> — ${deltaText}.</span>`;
 }
