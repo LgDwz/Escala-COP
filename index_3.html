@@ -1,0 +1,1537 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ESCALA COP · Interativa</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+<!-- ============================================================
+     FIREBASE SDK (compat build — funciona direto com <script> tags,
+     sem precisar de bundler/build step)
+     ============================================================ -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+
+<style>
+  :root{
+    --bg:#05070a; --panel:#0b0f16; --panel2:#10151d; --line:#1b232f;
+    --cyan:#4be3ff; --violet:#8b7bff; --amber:#ffb454; --green:#3ddc97; --red:#ff6b6b;
+    --text:#e4ecf3; --muted:#6c7a8a;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Space Grotesk',sans-serif;min-height:100vh;padding:0 0 90px;}
+  body::before{content:'';position:fixed;inset:0;background-image:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(75,227,255,0.015) 2px,rgba(75,227,255,0.015) 4px);pointer-events:none;z-index:0;}
+  .wrap{position:relative;z-index:1;max-width:1420px;margin:0 auto;padding:0 28px;}
+  header{padding:40px 0 24px;border-bottom:1px solid var(--line);margin-bottom:24px;}
+  .eyebrow{font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--cyan);margin-bottom:10px;}
+  h1{font-size:32px;font-weight:700;letter-spacing:-0.01em;}
+  .sub{color:var(--muted);font-size:13.5px;margin-top:8px;max-width:820px;line-height:1.5;}
+
+  .tabs{display:flex;gap:8px;margin-bottom:24px;flex-wrap:wrap;position:sticky;top:0;background:rgba(5,7,10,.92);backdrop-filter:blur(6px);padding:12px 0;z-index:5;}
+  .tab-btn{font-family:'JetBrains Mono',monospace;font-size:12.5px;letter-spacing:.05em;background:var(--panel);border:1px solid var(--line);color:var(--muted);padding:10px 18px;border-radius:8px;cursor:pointer;}
+  .tab-btn.active{color:var(--bg);background:var(--cyan);border-color:var(--cyan);font-weight:600;}
+  .tab-btn:disabled{opacity:.5;cursor:not-allowed;}
+  .panel-view{display:none;}
+  .panel-view.active{display:block;}
+
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:24px;}
+  .kpi{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 18px;}
+  .kpi .lbl{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:6px;}
+  .kpi .val{font-size:19px;font-weight:600;}
+  .kpi .val.cyan{color:var(--cyan);} .kpi .val.amber{color:var(--amber);}
+  .kpi .val.violet{color:var(--violet);} .kpi .val.green{color:var(--green);}
+
+  .sec-title{font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--cyan);margin:30px 0 14px;display:flex;align-items:center;gap:10px;}
+  .sec-title::after{content:'';flex:1;height:1px;background:var(--line);}
+
+  .cal-head{display:grid;grid-template-columns:repeat(7,1fr);gap:8px;margin-bottom:8px;}
+  .cal-head div{font-family:'JetBrains Mono',monospace;font-size:11px;text-align:center;color:var(--muted);letter-spacing:.08em;text-transform:uppercase;padding-bottom:4px;}
+  .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:8px;margin-bottom:8px;}
+  .day{background:var(--panel);border:1px solid var(--line);border-radius:9px;min-height:150px;padding:9px;position:relative;}
+  .day.empty{background:transparent;border:none;min-height:0;}
+  .day .num{font-family:'JetBrains Mono',monospace;font-size:13px;color:#ffffff;font-weight:600;}
+  .day.sat{border-color:rgba(255,180,84,.35);background:linear-gradient(160deg,rgba(255,180,84,.09),var(--panel) 60%);}
+  .day.sun{border-color:rgba(139,123,255,.35);background:linear-gradient(160deg,rgba(139,123,255,.10),var(--panel) 60%);}
+  .day.folga{border-color:rgba(61,220,151,.30);min-height:70px;}
+  .day.folga .tag{color:#ffffff;}
+  .day.normal{background:var(--panel);border-color:var(--line);}
+  .day.normal .num{color:#ffffff;text-shadow:0 0 8px rgba(255,255,255,.8), 0 0 16px rgba(255,255,255,.4);font-weight:600;}
+  .day.normal .tag{color:#ffffff;text-shadow:0 0 6px rgba(255,255,255,.6);font-weight:600;}
+  .day .tag{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin-top:3px;}
+  .day.sat .tag, .day.sun .tag{color:var(--text);font-weight:600;}
+  .slots{display:flex;flex-direction:column;gap:4px;margin-top:7px;}
+  .slot{display:flex;gap:4px;align-items:center;}
+  .slot select{flex:1;min-width:0;font-family:'Space Grotesk',sans-serif;font-size:10.5px;font-weight:600;padding:3px 4px;border-radius:5px;border:1px solid var(--line);background:rgba(255,255,255,.06);color:var(--text);cursor:pointer;}
+  .slot-remove{flex:0 0 auto;width:19px;height:19px;border-radius:4px;border:1px solid rgba(255,107,107,.3);background:rgba(255,107,107,.12);color:var(--red);font-size:11px;line-height:1;cursor:pointer;padding:0;}
+  .slot-add-btn{width:100%;margin-top:6px;font-size:9.5px;padding:4px;border-radius:5px;border:1px dashed var(--line);background:transparent;color:var(--muted);cursor:pointer;font-family:'JetBrains Mono',monospace;}
+  .slot-add-btn:hover{border-color:var(--cyan);color:var(--cyan);}
+  .day.sat .slot select{background:rgba(255,180,84,.14);color:var(--amber);border-color:rgba(255,180,84,.3);}
+  .day.sun .slot select{background:rgba(139,123,255,.16);color:var(--violet);border-color:rgba(139,123,255,.3);}
+  .slot.slot-t3 select{background:rgba(255,60,120,.22)!important;color:#ff5c9e!important;border-color:#ff5c9e!important;box-shadow:0 0 8px rgba(255,60,120,.35);font-weight:700;}
+  .t3-picker{margin-top:8px;padding-top:7px;border-top:1px dashed rgba(255,255,255,.12);}
+  .t3-picker label{display:block;font-family:'JetBrains Mono',monospace;font-size:8.5px;letter-spacing:.04em;text-transform:uppercase;color:#ff5c9e;margin-bottom:3px;}
+  .t3-picker select{width:100%;font-size:10px;padding:3px 4px;border-radius:5px;background:rgba(255,60,120,.10);color:#ff5c9e;border:1px solid rgba(255,60,120,.35);}
+  .chip.folga-chip{font-family:'Space Grotesk',sans-serif;font-size:10px;font-weight:600;padding:2px 6px;border-radius:5px;background:rgba(61,220,151,.14);color:var(--green);display:inline-block;margin-top:4px;}
+  .day.falta{border-color:rgba(255,107,107,.35);background:linear-gradient(160deg,rgba(255,107,107,.09),var(--panel) 60%);}
+  .day.falta .tag{color:#ffffff;text-shadow:0 0 6px rgba(255,107,107,.6);font-weight:600;}
+  .day.atestado{border-color:rgba(75,227,255,.35);background:linear-gradient(160deg,rgba(75,227,255,.09),var(--panel) 60%);}
+  .day.atestado .tag{color:#ffffff;text-shadow:0 0 6px rgba(75,227,255,.6);font-weight:600;}
+  .day.homeoffice{border-color:rgba(255,92,158,.35);background:linear-gradient(160deg,rgba(255,92,158,.09),var(--panel) 60%);}
+  .day.homeoffice .tag{color:#ffffff;text-shadow:0 0 6px rgba(255,92,158,.6);font-weight:600;}
+  .day-gear-btn{position:absolute;top:7px;right:7px;width:18px;height:18px;border-radius:4px;border:1px solid var(--line);background:rgba(255,255,255,.06);color:var(--muted);font-size:10px;line-height:1;cursor:pointer;padding:0;z-index:2;}
+  .day-gear-btn:hover{color:var(--cyan);border-color:var(--cyan);}
+  .manual-events{margin-top:8px;padding-top:7px;border-top:1px dashed rgba(255,255,255,.1);display:flex;flex-direction:column;gap:4px;}
+  .manual-chip{font-family:'Space Grotesk',sans-serif;font-size:9.5px;font-weight:600;padding:2px 5px;border-radius:5px;display:inline-flex;align-items:center;gap:5px;}
+  .manual-chip.folga{background:rgba(61,220,151,.14);color:var(--green);}
+  .manual-chip.falta{background:rgba(255,107,107,.14);color:var(--red);}
+  .manual-chip.atestado{background:rgba(75,227,255,.14);color:var(--cyan);}
+  .manual-chip.homeoffice{background:rgba(255,92,158,.14);color:#ff5c9e;}
+  .chip-remove{background:none;border:none;color:inherit;cursor:pointer;font-size:11px;line-height:1;padding:0;}
+  .manual-add{display:flex;gap:3px;align-items:center;margin-top:2px;}
+  .manual-add select{flex:1;min-width:0;font-size:9.5px;padding:2px 3px;border-radius:4px;border:1px solid var(--line);background:rgba(255,255,255,.06);color:var(--text);}
+  /* Força o tema escuro também na lista suspensa dos <select>, que por
+     padrão usa as cores do sistema operacional/navegador. */
+  select, select option{background:var(--panel2);color:var(--text);}
+  .slot select option, .t3-picker select option, .manual-add select option, .login-field option{background:var(--panel2);color:var(--text);}
+
+  table.report{width:100%;border-collapse:collapse;background:var(--panel);border-radius:10px;overflow:hidden;border:1px solid var(--line);font-size:12.5px;margin-bottom:10px;}
+  table.report th{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);text-align:left;padding:9px 12px;background:var(--panel2);border-bottom:1px solid var(--line);}
+  table.report td{padding:9px 12px;border-bottom:1px solid var(--line);}
+  table.report tr:last-child td{border-bottom:none;}
+  .schedule-ref{margin-bottom:20px;}
+  .code-chip{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:11px;background:rgba(75,227,255,.14);color:var(--cyan);padding:3px 9px;border-radius:6px;}
+  td.num, th.num{text-align:right;font-family:'JetBrains Mono',monospace;}
+  td.has-plantao{background:rgba(255,180,84,.08);}
+  .status{display:inline-flex;align-items:center;gap:6px;font-family:'JetBrains Mono',monospace;font-size:10.5px;padding:3px 9px;border-radius:20px;font-weight:600;white-space:nowrap;}
+  .status.ok{background:rgba(61,220,151,.12);color:var(--green);}
+  .status.watch{background:rgba(255,180,84,.12);color:var(--amber);}
+  .status.rejected{background:rgba(255,107,107,.12);color:var(--red);}
+  .delta-pos{color:var(--amber);font-weight:600;}
+  .delta-neg{color:var(--cyan);font-weight:600;}
+
+  .history-block{margin:20px 0 28px;background:linear-gradient(135deg, rgba(255,180,84,.08), rgba(139,123,255,.06));border:2px solid var(--amber);border-radius:14px;padding:20px 22px;box-shadow:0 0 24px rgba(255,180,84,.15);}
+  .history-title{font-family:'JetBrains Mono',monospace;font-size:13px;letter-spacing:.06em;color:var(--amber);font-weight:700;margin-bottom:14px;display:flex;align-items:center;gap:10px;}
+  .history-count{font-family:'Space Grotesk',sans-serif;font-size:11px;font-weight:600;background:rgba(255,180,84,.18);color:var(--amber);padding:2px 10px;border-radius:12px;}
+  .history-empty{color:var(--muted);font-size:12.5px;line-height:1.5;}
+  table.history-table{background:rgba(11,15,22,.7);}
+  table.history-table td.arrow{color:var(--amber);text-align:center;font-weight:700;}
+
+  #toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--panel2);border:1px solid var(--line);color:var(--text);padding:12px 20px;border-radius:10px;font-family:'JetBrains Mono',monospace;font-size:12.5px;opacity:0;pointer-events:none;transition:all .25s ease;z-index:1000;box-shadow:0 8px 24px rgba(0,0,0,.4);}
+  #toast.toast-visible{opacity:1;transform:translateX(-50%) translateY(0);}
+  #toast.toast-error{border-color:var(--red);color:var(--red);}
+
+  .clear-history-area{margin-top:12px;}
+  .clear-confirm{margin-top:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:rgba(255,107,107,.08);border:1px solid rgba(255,107,107,.3);border-radius:8px;padding:12px 14px;}
+  .clear-confirm span{font-size:12px;color:var(--text);}
+  .clear-confirm input{background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:6px;padding:6px 10px;font-size:12px;width:140px;}
+  .dot{width:6px;height:6px;border-radius:50%;background:currentColor;}
+
+  .legend{display:flex;gap:20px;flex-wrap:wrap;margin:14px 0 8px;font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--muted);}
+  .legend span{display:inline-flex;align-items:center;gap:7px;}
+  .swatch{width:12px;height:12px;border-radius:3px;display:inline-block;}
+
+  .note{margin-top:16px;background:var(--panel2);border:1px solid var(--line);border-left:3px solid var(--cyan);border-radius:8px;padding:14px 16px;font-size:12px;color:var(--muted);line-height:1.6;}
+  .note b{color:var(--text);}
+  .note.warn{border-left-color:var(--red);}
+
+  table.matrix{width:100%;border-collapse:collapse;background:var(--panel);border-radius:10px;overflow:hidden;border:1px solid var(--line);font-size:11.5px;}
+  table.matrix th{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.03em;text-transform:uppercase;color:var(--muted);text-align:left;padding:8px 9px;background:var(--panel2);border-bottom:1px solid var(--line);border-left:1px solid var(--line);}
+  table.matrix th:first-child{border-left:none;}
+  table.matrix .wrange{display:block;font-weight:400;color:var(--muted);font-size:8px;margin-top:2px;text-transform:none;}
+  table.matrix td{padding:8px 9px;border-bottom:1px solid var(--line);border-left:1px solid var(--line);}
+  table.matrix td:first-child{border-left:none;font-weight:600;}
+  table.matrix tr:last-child td{border-bottom:none;}
+
+  /* ---- LOGIN SCREEN (split-screen, âmbar) ---- */
+  #loginScreen{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;position:relative;z-index:2;}
+  .login-split{width:100%;max-width:820px;display:grid;grid-template-columns:1fr 1fr;border-radius:18px;overflow:hidden;border:1px solid var(--line);box-shadow:0 0 60px rgba(255,92,158,.10);}
+  .login-left{background:linear-gradient(160deg,#0b0f16 0%,#2a1122 130%);padding:48px 40px;display:flex;flex-direction:column;justify-content:center;position:relative;}
+  .login-left::before{content:'';position:absolute;inset:0;background-image:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(255,92,158,0.03) 2px,rgba(255,92,158,0.03) 4px);pointer-events:none;}
+  .login-right{background:var(--panel);padding:48px 40px;display:flex;flex-direction:column;justify-content:center;}
+  .login-mini-cal{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;margin-top:26px;max-width:280px;}
+  .login-mini-cal div{height:16px;border-radius:4px;background:var(--panel2);}
+  .login-mini-cal div.hl{background:#ff5c9e;}
+  .login-mini-legend{display:flex;gap:16px;margin-top:16px;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);}
+  .login-mini-legend span{display:inline-flex;align-items:center;gap:6px;}
+  .login-mini-legend .sw{width:9px;height:9px;border-radius:2px;background:#ff5c9e;display:inline-block;}
+  .login-label{display:block;font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:6px;}
+  .login-field{width:100%;padding:10px 12px;border-radius:8px;background:var(--panel2);border:1px solid var(--line);color:var(--text);font-size:13px;margin-bottom:16px;}
+  select.login-field{font-family:'Space Grotesk',sans-serif;}
+  input.login-field{font-family:'JetBrains Mono',monospace;}
+  .login-hint{font-size:11px;color:var(--muted);margin:-10px 0 16px;line-height:1.5;}
+  #loginError{display:none;color:var(--red);font-size:11.5px;font-family:'JetBrains Mono',monospace;margin-bottom:12px;}
+  #loginInfo{display:none;color:var(--green);font-size:11.5px;font-family:'JetBrains Mono',monospace;margin-bottom:12px;}
+  #configWarning{display:none;color:var(--amber);font-size:11.5px;font-family:'JetBrains Mono',monospace;margin-bottom:16px;line-height:1.6;background:rgba(255,180,84,.08);border:1px solid rgba(255,180,84,.3);border-radius:8px;padding:12px 14px;}
+  .login-btn{width:100%;padding:12px;text-align:center;margin-top:4px;background:#ff5c9e!important;border-color:#ff5c9e!important;color:#2a1122!important;}
+  .login-toggle{display:flex;gap:8px;margin-bottom:20px;}
+  .login-cat-btn{flex:1;text-align:center;}
+  .login-cat-btn.active{background:#ff5c9e!important;border-color:#ff5c9e!important;color:#2a1122!important;}
+  .who-chip{font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--cyan);border:1px solid var(--line);padding:6px 12px;border-radius:8px;background:var(--panel2);}
+  .spinner{display:inline-block;width:12px;height:12px;border:2px solid rgba(42,17,34,.35);border-top-color:#2a1122;border-radius:50%;animation:spin .7s linear infinite;margin-right:6px;vertical-align:-2px;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+
+  @media (max-width:720px){
+    .login-split{grid-template-columns:1fr;max-width:420px;}
+    .login-left{padding:36px 32px 24px;}
+    .login-right{padding:32px 32px 40px;}
+  }
+
+  @media (max-width:1100px){
+    .kpis{grid-template-columns:repeat(2,1fr);}
+    table.matrix, table.report{display:block;overflow-x:auto;}
+    .day{min-height:130px;}
+  }
+</style>
+</head>
+<body>
+
+<div id="loginScreen">
+  <div class="login-split">
+    <div class="login-left">
+      <div class="eyebrow" style="color:#ff5c9e;margin-bottom:8px;">Escala COP</div>
+      <h1 style="font-size:21px;line-height:1.35;margin-bottom:6px;">Turnos, plantões e folgas organizados em um só lugar.</h1>
+      <div class="sub" style="margin-top:0;">Ago a Dez/2026 · acesso por perfil (Colaborador, Líder ou Master).</div>
+      <div class="login-mini-cal">
+        <div></div><div></div><div class="hl"></div><div></div><div></div><div class="hl"></div><div class="hl"></div>
+        <div></div><div class="hl"></div><div></div><div></div><div class="hl"></div><div></div><div></div>
+        <div></div><div></div><div></div><div class="hl"></div><div></div><div></div><div class="hl"></div>
+      </div>
+      <div class="login-mini-legend">
+        <span><span class="sw"></span>Plantão / troca de turno</span>
+      </div>
+    </div>
+
+    <div class="login-right">
+      <div class="eyebrow" style="margin-bottom:6px;">Acesso restrito</div>
+      <div class="sub" style="margin:0 0 20px;">Selecione seu usuário e digite sua senha.</div>
+
+      <div id="configWarning"></div>
+
+      <div class="login-toggle">
+        <button type="button" class="tab-btn active login-cat-btn" id="catCopBtn" onclick="setLoginCategory('cop')">Colaborador (COP)</button>
+        <button type="button" class="tab-btn login-cat-btn" id="catLiderBtn" onclick="setLoginCategory('lideranca')">Liderança</button>
+      </div>
+
+      <label class="login-label">Usuário</label>
+      <select id="loginUser" class="login-field"></select>
+
+      <label class="login-label">Senha</label>
+      <input id="loginPass" type="password" class="login-field" placeholder="••••••••" onkeydown="if(event.key==='Enter') attemptLogin()">
+      <div class="login-hint" id="loginHintCop">🔐 Primeiro acesso? Digite a senha que você quer usar a partir de agora — ela será criada automaticamente (mínimo 6 caracteres).</div>
+
+      <div id="loginError"></div>
+      <div id="loginInfo"></div>
+
+      <button class="tab-btn active login-btn" id="loginBtn" onclick="attemptLogin()">Entrar</button>
+    </div>
+  </div>
+</div>
+
+<div id="dashboardRoot" style="display:none;">
+<div class="wrap">
+
+  <header>
+    <div class="eyebrow">COP · Escala Interativa</div>
+    <h1>ESCALA COP — Ago a Dez/2026</h1>
+    <div class="sub" id="subHeaderText">Sábado (4, times mesclados) + domingo (2).</div>
+    <div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+      <span class="who-chip" id="whoami"></span>
+      <button class="tab-btn" onclick="logout()">Sair</button>
+      <div id="sharedActions" style="display:flex;gap:10px;flex-wrap:wrap;">
+        <button class="tab-btn" style="color:var(--green);border-color:rgba(61,220,151,.4);" onclick="exportState()">📤 Exportar estado atual (backup)</button>
+      </div>
+    </div>
+    <div id="exportBox" style="display:none;margin-top:12px;">
+      <div class="note" style="border-left-color:var(--green);">
+        <b>Backup manual do estado atual.</b> A escala já fica salva automaticamente no Firebase a cada alteração — isto aqui é só uma cópia de segurança em texto.
+      </div>
+      <textarea id="exportTextarea" readonly style="width:100%;height:160px;margin-top:8px;background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:12px;font-family:'JetBrains Mono',monospace;font-size:11px;"></textarea>
+    </div>
+  </header>
+
+  <div class="tabs" id="tabsBar"></div>
+
+  <div id="monthPanels"></div>
+
+</div>
+</div>
+
+<script>
+// ============================================================
+// CONFIGURAÇÃO DO FIREBASE — cole aqui os valores do SEU projeto
+// (Console Firebase → Configurações do projeto → Seus apps → Config)
+// Veja o passo a passo completo na mensagem que acompanha este arquivo.
+// ============================================================
+const firebaseConfig = {
+  apiKey: "AIzaSyDWFkbivq_xDJue14-8pRRDchlsf064NRM",
+  authDomain: "escalacop.firebaseapp.com",
+  projectId: "escalacop",
+  storageBucket: "escalacop.firebasestorage.app",
+  messagingSenderId: "858216191136",
+  appId: "1:858216191136:web:d2e819254d7060387725c5"
+};
+
+const FIREBASE_CONFIGURED = firebaseConfig.apiKey !== "SUA_API_KEY_AQUI";
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+// ================== DATA ==================
+const ALL_PEOPLE = ['Bárbara','Julia','Luana','Brian','Eduardo','Taynara','Bruno','Raqueli'];
+const AGEND = new Set(['Taynara','Bruno','Raqueli']);
+const MONTH_NAMES = {8:'Agosto',9:'Setembro',10:'Outubro',11:'Novembro',12:'Dezembro'};
+const YEAR = 2026;
+const START = new Date('2026-08-01T00:00:00');
+const END = new Date('2026-12-31T00:00:00');
+
+let satCrew = {"2026-08-01":["Bárbara","Julia","Luana","Taynara"],"2026-08-08":["Luana","Julia","Brian","Bruno"],"2026-08-15":["Eduardo","Luana","Brian","Raqueli"],"2026-08-22":["Bárbara","Eduardo","Brian","Taynara"],"2026-08-29":["Bárbara","Julia","Taynara","Eduardo"],"2026-09-05":["Julia","Bárbara","Raqueli","Bruno"],"2026-09-12":["Luana","Julia","Bárbara","Raqueli"],"2026-09-19":["Brian","Luana","Julia","Bruno"],"2026-09-26":["Taynara","Eduardo","Brian","Luana"],"2026-10-03":["Raqueli","Bruno","Taynara","Eduardo"],"2026-10-10":["Julia","Bárbara","Raqueli","Bruno"],"2026-10-17":["Luana","Julia","Bárbara","Raqueli"],"2026-10-24":["Brian","Luana","Julia","Taynara"],"2026-10-31":["Bárbara","Eduardo","Luana","Taynara"],"2026-11-07":["Bruno","Bárbara","Eduardo","Brian"],"2026-11-14":["Bárbara","Raqueli","Bruno","Taynara"],"2026-11-21":["Luana","Julia","Bárbara","Raqueli"],"2026-11-28":["Eduardo","Brian","Julia","Taynara"],"2026-12-05":["Eduardo","Brian","Luana","Taynara"],"2026-12-12":["Bruno","Bárbara","Eduardo","Brian"],"2026-12-19":["Bárbara","Raqueli","Bruno","Taynara"],"2026-12-26":["Luana","Julia","Bárbara","Raqueli"]};
+let sunCrew = {"2026-08-02":["Eduardo","Raqueli"],"2026-08-09":["Bárbara","Taynara"],"2026-08-16":["Julia","Bruno"],"2026-08-23":["Luana","Raqueli"],"2026-08-30":["Brian","Bruno"],"2026-09-06":["Taynara","Eduardo"],"2026-09-13":["Brian","Taynara"],"2026-09-20":["Bárbara","Eduardo"],"2026-09-27":["Julia","Bárbara"],"2026-10-04":["Brian","Luana"],"2026-10-11":["Taynara","Eduardo"],"2026-10-18":["Bruno","Brian"],"2026-10-25":["Raqueli","Bruno"],"2026-11-01":["Julia","Raqueli"],"2026-11-08":["Luana","Julia"],"2026-11-15":["Eduardo","Brian"],"2026-11-22":["Bruno","Taynara"],"2026-11-29":["Raqueli","Bruno"],"2026-12-06":["Bárbara","Raqueli"],"2026-12-13":["Luana","Julia"],"2026-12-20":["Eduardo","Brian"],"2026-12-27":["Bruno","Taynara"]};
+let folgaPlan = {};
+let changeHistory = [];
+let satT3 = {"2026-08-01":0,"2026-08-08":1,"2026-08-15":1,"2026-08-22":2,"2026-08-29":3};
+let manualEvents = {}; // dateISO -> [{person, type:'folga'|'falta'}] — registros manuais em qualquer dia
+let earlyLeaves = {}; // dateISO -> { person: {hoursWorked, exitTime} } — aplicado quando uma solicitação de sair mais cedo é aprovada
+let requests = []; // solicitações dos COPs: {id, dateISO, person, type, description, exitTime, status, createdAt, respondedBy, respondedAt, responseNote}
+const MANAGER_PIN = '2026COP'; // senha de gestor para limpar histórico — altere aqui
+
+const WEEKDAY_SCHEDULE = {
+  'Eduardo': {code:'T4', hours:'11h às 20h'},
+  'Bárbara': {code:'T3', hours:'09h às 18h'},
+  'Julia':   {code:'T2', hours:'08h às 17h'},
+  'Luana':   {code:'T1', hours:'07:30 às 16:30'},
+  'Brian':   {code:'T3', hours:'09h às 18h'},
+  'Taynara': {code:'T2', hours:'08h às 17h'},
+  'Bruno':   {code:'T2', hours:'08h às 17h'},
+  'Raqueli': {code:'T2', hours:'08h às 18h'},
+};
+
+// ================== USUÁRIOS / PERFIS ==================
+// Estrutura de acesso (COP / LÍDER / MASTER). Não é informação sensível —
+// a senha de cada um fica só no Firestore (coleção "auth"), nunca aqui no código.
+function stripAccents(s){ return s.normalize('NFD').replace(/[\u0300-\u036f]/g,''); }
+
+const APP_USERS = {};
+ALL_PEOPLE.forEach(p=>{
+  const uname = stripAccents(p).toLowerCase();
+  APP_USERS[uname] = { role: 'cop', person: p };
+});
+APP_USERS['rafael'] = { role: 'lider', person: 'Rafael' };
+APP_USERS['kassy']  = { role: 'lider', person: 'Kassy' };
+APP_USERS['master'] = { role: 'master' };
+
+let currentUser = null;
+let unsubscribeSchedule = null;
+
+let loginCategory = 'cop';
+
+function setLoginCategory(cat){
+  loginCategory = cat;
+  document.getElementById('catCopBtn').classList.toggle('active', cat==='cop');
+  document.getElementById('catLiderBtn').classList.toggle('active', cat==='lideranca');
+  populateLoginSelect(cat);
+  document.getElementById('loginPass').value = '';
+  document.getElementById('loginHintCop').style.display = (cat === 'cop') ? 'block' : 'none';
+  document.getElementById('loginError').style.display = 'none';
+  document.getElementById('loginInfo').style.display = 'none';
+}
+
+function populateLoginSelect(category){
+  const sel = document.getElementById('loginUser');
+  const entries = Object.keys(APP_USERS).filter(u=>{
+    const role = APP_USERS[u].role;
+    return category === 'cop' ? role === 'cop' : (role === 'lider' || role === 'master');
+  });
+  sel.innerHTML = entries.map(u=>{
+    const c = APP_USERS[u];
+    let label;
+    if(c.role === 'cop') label = c.person; // só o nome, sem legenda
+    else if(c.role === 'lider') label = `${c.person} — Líder`;
+    else label = 'Master — acesso total';
+    return `<option value="${u}">${label}</option>`;
+  }).join('');
+}
+
+// Senha nunca é guardada em texto puro — vira um hash SHA-256 antes de ir
+// pro Firestore. Mesmo com as regras abertas (leitura/escrita livres, igual
+// ao seu outro projeto), quem olhar o documento só vê o hash, não a senha.
+async function sha256Hex(text){
+  const enc = new TextEncoder().encode(text);
+  const buf = await crypto.subtle.digest('SHA-256', enc);
+  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+
+async function attemptLogin(){
+  const errEl = document.getElementById('loginError');
+  const infoEl = document.getElementById('loginInfo');
+  errEl.style.display = 'none';
+  infoEl.style.display = 'none';
+
+  if(!FIREBASE_CONFIGURED){
+    errEl.textContent = 'O Firebase ainda não foi configurado neste arquivo (veja o aviso acima).';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  const uname = document.getElementById('loginUser').value;
+  const password = document.getElementById('loginPass').value;
+  const cred = APP_USERS[uname];
+  if(!password || password.length < 6){
+    errEl.textContent = 'Digite uma senha com pelo menos 6 caracteres.';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  const btn = document.getElementById('loginBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>Entrando...';
+
+  try{
+    const hash = await sha256Hex(password);
+    const docRef = db.collection('auth').doc(uname);
+    const snap = await docRef.get();
+
+    if(!snap.exists){
+      // Primeiro acesso: a senha digitada agora vira a senha oficial dessa pessoa.
+      await docRef.set({ passwordHash: hash, createdAt: new Date().toISOString() });
+      await onLoginSuccess(uname, cred, true);
+    } else if(snap.data().passwordHash === hash){
+      await onLoginSuccess(uname, cred, false);
+    } else {
+      errEl.textContent = 'Senha incorreta.';
+      errEl.style.display = 'block';
+    }
+  }catch(err){
+    console.error('Login error:', err);
+    errEl.textContent = 'Erro ao acessar o banco de dados. Verifique sua internet e as regras do Firestore.';
+    errEl.style.display = 'block';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Entrar';
+  }
+}
+
+async function onLoginSuccess(uname, cred, isNewAccount){
+  currentUser = { username: uname, role: cred.role, person: cred.person || null };
+
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('dashboardRoot').style.display = 'block';
+
+  const whoami = document.getElementById('whoami');
+  const subText = document.getElementById('subHeaderText');
+  const sharedActions = document.getElementById('sharedActions');
+
+  if(currentUser.role === 'cop'){
+    whoami.textContent = `${currentUser.person} · COP`;
+    subText.textContent = 'Aqui você acompanha sua escala pessoal: turnos, plantões de fim de semana e folgas ao longo do período.';
+    sharedActions.style.display = 'none';
+  } else if(currentUser.role === 'lider'){
+    whoami.textContent = `${currentUser.person} · LÍDER`;
+    subText.textContent = 'Sábado (4, times mesclados) + domingo (2). Clique em qualquer nome no calendário para trocar por outro colaborador — o resumo de horas recalcula automaticamente.';
+    sharedActions.style.display = 'flex';
+  } else {
+    whoami.textContent = 'MASTER · acesso total';
+    subText.textContent = 'Sábado (4, times mesclados) + domingo (2). Clique em qualquer nome no calendário para trocar por outro colaborador. Use as abas Configurações e Financeiro para itens administrativos.';
+    sharedActions.style.display = 'flex';
+  }
+
+  if(isNewAccount) showToast(`Senha criada com sucesso para ${uname}.`, false);
+
+  await bootDashboard();
+}
+
+function logout(){
+  if(unsubscribeSchedule){ unsubscribeSchedule(); unsubscribeSchedule = null; }
+  currentUser = null;
+  document.getElementById('dashboardRoot').style.display = 'none';
+  document.getElementById('loginScreen').style.display = 'flex';
+  document.getElementById('loginPass').value = '';
+  document.getElementById('loginError').style.display = 'none';
+  document.getElementById('loginInfo').style.display = 'none';
+}
+
+function showToast(msg, isError){
+  let t = document.getElementById('toast');
+  if(!t){
+    t = document.createElement('div');
+    t.id = 'toast';
+    document.body.appendChild(t);
+  }
+  t.textContent = msg;
+  t.className = 'toast-visible' + (isError ? ' toast-error' : '');
+  clearTimeout(window._toastTimer);
+  window._toastTimer = setTimeout(()=>{ t.className=''; }, 3500);
+}
+
+// ================== DATE HELPERS ==================
+function toISO(d){ return d.toISOString().slice(0,10); }
+function addDays(d,n){ const r=new Date(d); r.setDate(r.getDate()+n); return r; }
+function dow(d){ return (d.getDay()+6)%7; }
+function fromISO(s){ return new Date(s+'T00:00:00'); }
+
+// ================== FOLGA RECOMPUTE ==================
+function recomputeFolga(){
+  folgaPlan = {};
+  for(const sunISO in sunCrew){
+    const sund = fromISO(sunISO);
+    const mondayNext = addDays(sund, 1);
+    const fridayNext = addDays(sund, 5);
+    const candidates = [mondayNext, fridayNext].filter(d => d>=START && d<=END);
+    if(candidates.length===0) continue;
+    sunCrew[sunISO].forEach((p, idx)=>{
+      const day = candidates[idx % candidates.length];
+      const iso = toISO(day);
+      if(!folgaPlan[iso]) folgaPlan[iso] = [];
+      folgaPlan[iso].push(p);
+    });
+  }
+}
+
+// ================== HOURS LOGIC ==================
+function hasFolga(dateISO, person){ return (folgaPlan[dateISO]||[]).includes(person); }
+function getManualEvent(dateISO, person){
+  const list = manualEvents[dateISO];
+  if(!list) return null;
+  const found = list.find(e => e.person === person);
+  return found ? found.type : null;
+}
+function getEarlyLeave(dateISO, person){
+  return (earlyLeaves[dateISO] && earlyLeaves[dateISO][person]) || null;
+}
+function parseHourToken(tok){
+  tok = tok.trim().replace('h','');
+  if(tok.includes(':')){
+    const [h,m] = tok.split(':').map(Number);
+    return h*60 + (m||0);
+  }
+  return Number(tok)*60;
+}
+function getShiftStartMinutes(person){
+  const hours = WEEKDAY_SCHEDULE[person].hours; // ex: "08h às 17h"
+  const startTok = hours.split(' às ')[0];
+  return parseHourToken(startTok);
+}
+function timeStrToMinutes(t){
+  const [h,m] = t.split(':').map(Number);
+  return h*60 + (m||0);
+}
+function dayHours(person, d){
+  const iso = toISO(d);
+  const w = dow(d);
+  const manual = getManualEvent(iso, person);
+  if(manual === 'folga' || manual === 'falta') return 0; // folga ou falta manual zeram as horas do dia
+  // atestado não desconta horas — conta como se tivesse trabalhado normalmente
+  const early = getEarlyLeave(iso, person);
+  if(early) return early.hoursWorked; // saída antecipada aprovada substitui as horas do dia
+  if(w===5) return (satCrew[iso]||[]).includes(person) ? 8 : 0;
+  if(w===6) return (sunCrew[iso]||[]).includes(person) ? 8 : 0;
+  return hasFolga(iso, person) ? 0 : 8;
+}
+function hasPlantao(person, d){
+  const iso = toISO(d);
+  const w = dow(d);
+  if(w===5) return (satCrew[iso]||[]).includes(person);
+  if(w===6) return (sunCrew[iso]||[]).includes(person);
+  return false;
+}
+function weeksForMonth(year, month){
+  const first = new Date(year, month-1, 1);
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const last = new Date(year, month-1, daysInMonth);
+  const weeks = [];
+  let monday = addDays(first, -dow(first));
+  while(monday <= last){
+    const daysInRange = [];
+    for(let k=0;k<7;k++){
+      const d = addDays(monday, k);
+      if(d.getMonth()===month-1 && d>=START && d<=END) daysInRange.push(d);
+    }
+    weeks.push({monday: new Date(monday), daysInRange});
+    monday = addDays(monday, 7);
+  }
+  return weeks;
+}
+
+// ================== RENDER: CALENDAR (LIDER/MASTER — editável) ==================
+function formatDelta(avg){
+  const delta = avg - 44;
+  const sign = delta > 0 ? '+' : (delta < 0 ? '-' : '');
+  return `${sign}${Math.abs(delta).toFixed(1)}h`;
+}
+function buildScheduleRefRows(personFilter){
+  const people = personFilter ? [personFilter] : ALL_PEOPLE;
+  return people.map(p=>{
+    const s = WEEKDAY_SCHEDULE[p];
+    return `<tr><td>${p.toUpperCase()}</td><td><span class="code-chip">${s.code}</span></td><td>${s.hours}</td></tr>`;
+  }).join('');
+}
+function personOptions(selected){
+  return ALL_PEOPLE.map(p=>`<option value="${p}" ${p===selected?'selected':''}>${p}</option>`).join('');
+}
+function personOptionsPlaceholder(){
+  return '<option value="" selected disabled>Selecionar…</option>' + ALL_PEOPLE.map(p=>`<option value="${p}">${p}</option>`).join('');
+}
+function manualTypeLabel(type){
+  if(type === 'folga') return 'Folga';
+  if(type === 'falta') return 'Falta';
+  if(type === 'homeoffice') return 'Home Office';
+  return 'Atestado';
+}
+let openManualForms = new Set();
+function toggleManualForm(iso){
+  const el = document.getElementById('manualFormWrap-'+iso);
+  if(!el) return;
+  const isOpen = openManualForms.has(iso);
+  if(isOpen){ openManualForms.delete(iso); el.style.display = 'none'; }
+  else { openManualForms.add(iso); el.style.display = 'flex'; }
+}
+function dayGearButton(iso){
+  return `<button type="button" class="day-gear-btn" title="Adicionar folga, falta ou atestado" onclick="toggleManualForm('${iso}')">⚙</button>`;
+}
+function renderManualEventsBlock(iso){
+  const list = manualEvents[iso] || [];
+  const chips = list.map((e, idx)=>`
+    <span class="chip manual-chip ${e.type}">${e.person} · ${manualTypeLabel(e.type)}
+      <button type="button" class="chip-remove" title="Remover" onclick="removeManualEvent('${iso}',${idx})">×</button>
+    </span>`).join('');
+  const isOpen = openManualForms.has(iso);
+  return `
+    <div class="manual-events">
+      ${chips}
+      <div id="manualFormWrap-${iso}" class="manual-add" style="display:${isOpen ? 'flex' : 'none'};">
+        <select id="manualPerson-${iso}">${personOptionsPlaceholder()}</select>
+        <select id="manualType-${iso}">
+          <option value="folga">Folga</option>
+          <option value="falta">Falta</option>
+          <option value="atestado">Atestado</option>
+          <option value="homeoffice">Home Office</option>
+        </select>
+        <button type="button" class="slot-add-btn" style="margin-top:0;width:auto;padding:4px 8px;" onclick="addManualEvent('${iso}')">+</button>
+      </div>
+    </div>
+  `;
+}
+
+function dayCell(d){
+  const iso = toISO(d);
+  const w = dow(d);
+  if(d < START || d > END) return '<div class="day empty"></div>';
+  if(w===5 && satCrew[iso]){
+    const t3Idx = satT3[iso];
+    const slots = satCrew[iso].map((p,idx)=>{
+      const isT3 = (t3Idx === idx);
+      return `<div class="slot${isT3?' slot-t3':''}">
+        <select onchange="onSwap('${iso}','sat',${idx},this.value)">${personOptions(p)}</select>
+        <button type="button" class="slot-remove" title="Remover vaga" onclick="removeSlot('${iso}','sat',${idx})">×</button>
+      </div>`;
+    }).join('');
+    const t3Options = ['<option value="">— Ninguém —</option>']
+      .concat(satCrew[iso].map((p,idx)=>`<option value="${idx}" ${t3Idx===idx?'selected':''}>${p}</option>`))
+      .join('');
+    return `<div class="day sat">${dayGearButton(iso)}<div class="num">${d.getDate()}</div><div class="tag">Plantão sábado</div><div class="slots">${slots}</div>
+      <button type="button" class="slot-add-btn" onclick="addSlot('${iso}','sat')">+ Adicionar vaga</button>
+      <div class="t3-picker"><label>T3 (09h–18h) hoje:</label><select onchange="onSetSatT3('${iso}', this.value)">${t3Options}</select></div>
+      ${renderManualEventsBlock(iso)}
+    </div>`;
+  }
+  if(w===6 && sunCrew[iso]){
+    const slots = sunCrew[iso].map((p,idx)=>`<div class="slot">
+      <select onchange="onSwap('${iso}','sun',${idx},this.value)">${personOptions(p)}</select>
+      <button type="button" class="slot-remove" title="Remover vaga" onclick="removeSlot('${iso}','sun',${idx})">×</button>
+    </div>`).join('');
+    return `<div class="day sun">${dayGearButton(iso)}<div class="num">${d.getDate()}</div><div class="tag">Plantão domingo</div><div class="slots">${slots}</div>
+      <button type="button" class="slot-add-btn" onclick="addSlot('${iso}','sun')">+ Adicionar vaga</button>
+      ${renderManualEventsBlock(iso)}
+    </div>`;
+  }
+  if(folgaPlan[iso] && folgaPlan[iso].length){
+    const chips = folgaPlan[iso].map(n=>`<span class="chip folga-chip">Folga: ${n}</span>`).join('<br>');
+    return `<div class="day folga">${dayGearButton(iso)}<div class="num">${d.getDate()}</div><div class="tag">Folga</div>${chips}${renderManualEventsBlock(iso)}</div>`;
+  }
+  const earlyToday = earlyLeaves[iso] || {};
+  const earlyChips = Object.keys(earlyToday).map(p=>`<span class="chip manual-chip atestado">${p} · saída ${earlyToday[p].exitTime}</span>`).join('');
+  return `<div class="day normal">${dayGearButton(iso)}<div class="num">${d.getDate()}</div><div class="tag">Equipe completa</div>${earlyChips}${renderManualEventsBlock(iso)}</div>`;
+}
+function onSetSatT3(dateISO, value){
+  satT3[dateISO] = (value === '' ? null : Number(value));
+  renderAll();
+  saveState();
+}
+
+function addManualEvent(dateISO){
+  const person = document.getElementById('manualPerson-'+dateISO).value;
+  const type = document.getElementById('manualType-'+dateISO).value;
+  if(!person){
+    showToast('Selecione uma pessoa antes de adicionar.', true);
+    return;
+  }
+  if(!manualEvents[dateISO]) manualEvents[dateISO] = [];
+  if(manualEvents[dateISO].some(e => e.person === person)){
+    showToast(`${person} já tem um registro nesse dia. Remova antes de adicionar outro.`, true);
+    return;
+  }
+  manualEvents[dateISO].push({ person, type });
+  openManualForms.delete(dateISO);
+  changeHistory.push({ when: new Date(), dateISO, kind: 'manual', oldValue: '(sem registro)', newValue: `${person} — ${manualTypeLabel(type)}`, by: whoLabel() });
+  renderAll();
+  saveState();
+}
+
+function removeManualEvent(dateISO, idx){
+  const list = manualEvents[dateISO];
+  if(!list || !list[idx]) return;
+  const removed = list[idx];
+  list.splice(idx, 1);
+  if(list.length === 0) delete manualEvents[dateISO];
+  changeHistory.push({ when: new Date(), dateISO, kind: 'manual', oldValue: `${removed.person} — ${manualTypeLabel(removed.type)}`, newValue: '(removido)', by: whoLabel() });
+  renderAll();
+  saveState();
+}
+
+function addSlot(dateISO, kind){
+  const arr = kind==='sat' ? satCrew[dateISO] : sunCrew[dateISO];
+  if(!arr) return;
+  const available = ALL_PEOPLE.filter(p => !arr.includes(p));
+  const newPerson = available[0] || ALL_PEOPLE[0];
+  arr.push(newPerson);
+  recomputeFolga();
+  changeHistory.push({ when: new Date(), dateISO, kind, oldValue: '(vaga vazia)', newValue: `${newPerson} (vaga adicionada)`, by: whoLabel() });
+  renderAll();
+  saveState();
+}
+
+function removeSlot(dateISO, kind, idx){
+  const arr = kind==='sat' ? satCrew[dateISO] : sunCrew[dateISO];
+  if(!arr) return;
+  if(arr.length <= 1){
+    showToast('Precisa manter pelo menos 1 pessoa nesse plantão. Para remover o dia inteiro, edite o código.', true);
+    return;
+  }
+  const removed = arr[idx];
+  arr.splice(idx, 1);
+  if(kind === 'sat'){
+    const t3Idx = satT3[dateISO];
+    if(t3Idx === idx) satT3[dateISO] = null;
+    else if(t3Idx != null && t3Idx > idx) satT3[dateISO] = t3Idx - 1;
+  }
+  recomputeFolga();
+  changeHistory.push({ when: new Date(), dateISO, kind, oldValue: `${removed} (vaga removida)`, newValue: '(vaga vazia)', by: whoLabel() });
+  renderAll();
+  saveState();
+}
+function buildMonthCalendar(year, month){
+  const first = new Date(year, month-1, 1);
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const leading = dow(first);
+  let html = '';
+  for(let i=0;i<leading;i++) html += '<div class="day empty"></div>';
+  for(let dnum=1; dnum<=daysInMonth; dnum++) html += dayCell(new Date(year, month-1, dnum));
+  return html;
+}
+
+// ================== RENDER: PERSONAL CALENDAR (COP — somente leitura) ==================
+function dayCellPersonal(d, person){
+  const iso = toISO(d);
+  const w = dow(d);
+  if(d < START || d > END) return '<div class="day empty"></div>';
+  const manual = getManualEvent(iso, person);
+  if(manual === 'folga'){
+    return `<div class="day folga"><div class="num">${d.getDate()}</div><div class="tag">Folga</div></div>`;
+  }
+  if(manual === 'falta'){
+    return `<div class="day falta"><div class="num">${d.getDate()}</div><div class="tag">Falta</div></div>`;
+  }
+  if(manual === 'atestado'){
+    return `<div class="day atestado"><div class="num">${d.getDate()}</div><div class="tag">Atestado</div></div>`;
+  }
+  if(manual === 'homeoffice'){
+    return `<div class="day homeoffice"><div class="num">${d.getDate()}</div><div class="tag">Home Office</div></div>`;
+  }
+  const early = getEarlyLeave(iso, person);
+  if(early){
+    return `<div class="day atestado"><div class="num">${d.getDate()}</div><div class="tag">Saída às ${early.exitTime} (${early.hoursWorked}h)</div></div>`;
+  }
+  if(w===5){
+    if((satCrew[iso]||[]).includes(person)){
+      const idx = satCrew[iso].indexOf(person);
+      const isT3 = satT3[iso] === idx;
+      return `<div class="day sat"><div class="num">${d.getDate()}</div><div class="tag">${isT3 ? 'Plantão sábado (T3)' : 'Plantão sábado'}</div></div>`;
+    }
+    return `<div class="day normal"><div class="num">${d.getDate()}</div><div class="tag">Sem plantão</div></div>`;
+  }
+  if(w===6){
+    if((sunCrew[iso]||[]).includes(person)){
+      return `<div class="day sun"><div class="num">${d.getDate()}</div><div class="tag">Plantão domingo</div></div>`;
+    }
+    return `<div class="day normal"><div class="num">${d.getDate()}</div><div class="tag">Sem plantão</div></div>`;
+  }
+  if(hasFolga(iso, person)){
+    return `<div class="day folga"><div class="num">${d.getDate()}</div><div class="tag">Folga</div></div>`;
+  }
+  const s = WEEKDAY_SCHEDULE[person];
+  return `<div class="day normal"><div class="num">${d.getDate()}</div><div class="tag">${s.code} · ${s.hours}</div></div>`;
+}
+function buildMonthCalendarPersonal(year, month, person){
+  const first = new Date(year, month-1, 1);
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const leading = dow(first);
+  let html = '';
+  for(let i=0;i<leading;i++) html += '<div class="day empty"></div>';
+  for(let dnum=1; dnum<=daysInMonth; dnum++) html += dayCellPersonal(new Date(year, month-1, dnum), person);
+  return html;
+}
+
+// ================== RENDER: MONTHLY TOTAL SUMMARY ==================
+function buildMonthlyTotalTable(personFilter){
+  let rows = '';
+  const people = personFilter ? [personFilter] : ALL_PEOPLE;
+  people.forEach(p=>{
+    let grandTotal = 0;
+    let cells = '';
+    for(const m of [8,9,10,11,12]){
+      const daysInMonth = new Date(YEAR, m, 0).getDate();
+      let total = 0;
+      for(let dnum=1; dnum<=daysInMonth; dnum++) total += dayHours(p, new Date(YEAR, m-1, dnum));
+      grandTotal += total;
+      const weeks = daysInMonth/7;
+      const avg = total/weeks;
+      const cls = avg>46 ? ' class="watch-cell"' : '';
+      const deltaClass = avg > 44 ? 'delta-pos' : (avg < 44 ? 'delta-neg' : '');
+      cells += `<td class="num"${cls}>${total}h<br><span class="${deltaClass}" style="font-size:9px;">${formatDelta(avg)}</span></td>`;
+    }
+    const squad = AGEND.has(p) ? 'Agend.' : 'Operac.';
+    rows += `<tr><td>${p}</td><td>${squad}</td>${cells}<td class="num">${grandTotal}h</td></tr>`;
+  });
+  return rows;
+}
+
+// ================== RENDER: WEEKLY BREAKDOWN ==================
+function buildWeeklyTable(month, personFilter){
+  const weeks = weeksForMonth(YEAR, month);
+  let headerCells = '';
+  weeks.forEach((w, i)=>{
+    const isPartial = w.daysInRange.length < 7;
+    const label = `Sem ${i+1}` + (isPartial ? ' (parc.)' : '');
+    const rng = w.daysInRange.length ? `${w.daysInRange[0].getDate()}/${month} – ${w.daysInRange[w.daysInRange.length-1].getDate()}/${month}` : '-';
+    headerCells += `<th class="num">${label}<br><span class="wrange">${rng}</span></th>`;
+  });
+  let rows = '';
+  const people = personFilter ? [personFilter] : ALL_PEOPLE;
+  people.forEach(p=>{
+    let cells = '';
+    let total = 0;
+    weeks.forEach(w=>{
+      let wh = 0; let plantao=false;
+      w.daysInRange.forEach(d=>{ wh += dayHours(p,d); if(hasPlantao(p,d)) plantao=true; });
+      total += wh;
+      cells += `<td class="num${plantao?' has-plantao':''}">${wh}h</td>`;
+    });
+    const weeksInMonth = new Date(YEAR, month, 0).getDate()/7;
+    const avg = total/weeksInMonth;
+    const squad = AGEND.has(p) ? 'Agend.' : 'Operac.';
+    const deficit = 44 - avg;
+    const statusClass = avg < 44 ? 'rejected' : (avg > 46 ? 'watch' : 'ok');
+    const statusLabel = avg < 44 ? `Devendo ${deficit.toFixed(1)}h` : (avg > 46 ? 'Acima' : 'OK');
+    const deltaClass = avg > 44 ? 'delta-pos' : (avg < 44 ? 'delta-neg' : '');
+    rows += `<tr><td>${p}</td><td>${squad}</td><td class="num">${total}h</td><td class="num ${deltaClass}">${formatDelta(avg)}</td><td><span class="status ${statusClass}"><span class="dot"></span>${statusLabel}</span></td>${cells}</tr>`;
+  });
+  return {headerCells, rows};
+}
+
+// ================== SWAP (LIDER/MASTER) ==================
+function whoLabel(){
+  if(!currentUser) return 'Desconhecido';
+  if(currentUser.role === 'cop') return `${currentUser.person} (COP)`;
+  if(currentUser.role === 'lider') return `${currentUser.person} (Líder)`;
+  return 'Master';
+}
+
+// ================== SOLICITAÇÕES DOS COPS ==================
+function requestStatusBadge(status){
+  if(status === 'aprovado') return `<span class="status ok"><span class="dot"></span>Aprovado</span>`;
+  if(status === 'rejeitado') return `<span class="status rejected"><span class="dot"></span>Rejeitado</span>`;
+  return `<span class="status watch"><span class="dot"></span>Pendente</span>`;
+}
+function appliedAsLabel(appliedAs){
+  if(appliedAs === 'folga') return 'Aplicado como Folga';
+  if(appliedAs === 'atestado') return 'Aplicado como Atestado';
+  if(appliedAs === 'homeoffice') return 'Aplicado como Home Office';
+  if(appliedAs === 'horario') return 'Horas recalculadas pelo horário';
+  return 'Sem ajuste automático';
+}
+function toggleReqExitTime(checked){
+  const wrap = document.getElementById('reqExitTimeWrap');
+  if(wrap) wrap.style.display = checked ? 'block' : 'none';
+}
+
+function submitRequest(){
+  const dateInput = document.getElementById('reqDate').value;
+  const hasExitTime = document.getElementById('reqHasExitTime').checked;
+  const exitTimeEl = document.getElementById('reqExitTime');
+  const exitTime = hasExitTime && exitTimeEl ? exitTimeEl.value : '';
+  const homeoffice = document.getElementById('reqHomeoffice').checked;
+  const descEl = document.getElementById('reqDescription');
+  const description = descEl.value.trim();
+  const errEl = document.getElementById('reqError');
+  errEl.style.display = 'none';
+
+  if(!dateInput){ errEl.textContent = 'Escolha uma data.'; errEl.style.display='block'; return; }
+  const todayISO = new Date().toISOString().slice(0,10);
+  if(dateInput < todayISO){ errEl.textContent = 'Escolha uma data de hoje em diante.'; errEl.style.display='block'; return; }
+  if(hasExitTime && !exitTime){ errEl.textContent = 'Informe o horário que pretende sair, ou desmarque a opção.'; errEl.style.display='block'; return; }
+  if(!description){ errEl.textContent = 'Escreva sua solicitação.'; errEl.style.display='block'; return; }
+
+  requests.push({
+    id: 'req_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
+    dateISO: dateInput,
+    person: currentUser.person,
+    description,
+    exitTime: hasExitTime ? exitTime : null,
+    homeoffice,
+    status: 'pendente',
+    createdAt: new Date().toISOString(),
+    respondedBy: null,
+    respondedAt: null,
+    responseNote: null,
+    appliedAs: null,
+  });
+
+  descEl.value = '';
+  document.getElementById('reqDate').value = '';
+  document.getElementById('reqHasExitTime').checked = false;
+  document.getElementById('reqHomeoffice').checked = false;
+  toggleReqExitTime(false);
+  showToast('Solicitação enviada! Aguardando aprovação.', false);
+  renderAll();
+  saveState();
+}
+
+function askRespondRequest(reqId, decision){
+  const area = document.getElementById('reqConfirm-'+reqId);
+  if(!area) return;
+  const req = requests.find(r => r.id === reqId);
+  const label = decision === 'aprovado' ? 'Aprovar' : 'Rejeitar';
+  const color = decision === 'aprovado' ? 'var(--green)' : 'var(--red)';
+  const borderColor = decision === 'aprovado' ? 'rgba(61,220,151,.4)' : 'rgba(255,107,107,.4)';
+
+  const applyAsField = decision === 'aprovado' ? `
+    <span>Como aplicar essa aprovação?</span>
+    <select id="reqApplyAs-${reqId}" class="login-field" style="margin-bottom:10px;" onchange="updateReqPreview('${reqId}')">
+      <option value="nenhum">Nenhum ajuste automático (só aprovar)</option>
+      <option value="folga">Marcar como Folga</option>
+      <option value="atestado">Marcar como Atestado</option>
+      <option value="homeoffice" ${req && req.homeoffice ? 'selected' : ''}>Marcar como Home Office</option>
+      ${req && req.exitTime ? `<option value="horario">Recalcular horas pelo horário informado (${req.exitTime})</option>` : ''}
+    </select>
+    <div id="reqPreview-${reqId}" style="margin-bottom:10px;"></div>
+  ` : '';
+
+  area.innerHTML = `
+    <div class="clear-confirm" style="flex-direction:column;align-items:stretch;">
+      ${applyAsField}
+      <span>Observação (opcional) — o COP também vê isso:</span>
+      <textarea id="reqNote-${reqId}" rows="2" style="width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:6px;padding:8px;font-size:12px;margin:6px 0;font-family:'Space Grotesk',sans-serif;"></textarea>
+      <div style="display:flex;gap:8px;">
+        <button class="tab-btn" style="color:${color};border-color:${borderColor};" onclick="confirmRespondRequest('${reqId}','${decision}')">Confirmar ${label.toLowerCase()}</button>
+        <button class="tab-btn" onclick="renderAll()">Cancelar</button>
+      </div>
+    </div>
+  `;
+
+  if(decision === 'aprovado') updateReqPreview(reqId);
+}
+
+function updateReqPreview(reqId){
+  const req = requests.find(r => r.id === reqId);
+  const previewEl = document.getElementById('reqPreview-'+reqId);
+  if(!req || !previewEl) return;
+  const applyAsEl = document.getElementById('reqApplyAs-'+reqId);
+  const applyAs = applyAsEl ? applyAsEl.value : 'nenhum';
+
+  if(applyAs === 'nenhum'){
+    previewEl.innerHTML = `<span style="font-size:11.5px;color:var(--muted);">Sem ajuste automático — as horas dessa semana não mudam.</span>`;
+    return;
+  }
+
+  const d = fromISO(req.dateISO);
+  const currentDayHours = dayHours(req.person, d);
+  let simulatedDayHours;
+  if(applyAs === 'folga'){
+    simulatedDayHours = 0;
+  } else if(applyAs === 'atestado' || applyAs === 'homeoffice'){
+    simulatedDayHours = currentDayHours; // atestado e home office não descontam horas
+  } else if(applyAs === 'horario' && req.exitTime){
+    const startMin = getShiftStartMinutes(req.person);
+    const exitMin = timeStrToMinutes(req.exitTime);
+    simulatedDayHours = Math.max(0, Math.min(Math.round(((exitMin - startMin) / 60) * 10) / 10, 8));
+  } else {
+    simulatedDayHours = currentDayHours;
+  }
+  const diff = simulatedDayHours - currentDayHours;
+
+  const month = d.getMonth() + 1;
+  const weeks = weeksForMonth(YEAR, month);
+  const week = weeks.find(w => w.daysInRange.some(wd => toISO(wd) === req.dateISO));
+  let weekTotal = 0;
+  if(week) week.daysInRange.forEach(wd => { weekTotal += dayHours(req.person, wd); });
+  const projected = weekTotal + diff;
+  const delta = projected - 44;
+
+  const deltaText = delta < 0
+    ? `<span style="color:var(--red);">faltam ${Math.abs(delta).toFixed(1)}h pra bater a meta de 44h</span>`
+    : (delta > 0 ? `<span style="color:var(--amber);">${delta.toFixed(1)}h acima da meta de 44h</span>` : `<span style="color:var(--green);">exatamente na meta de 44h</span>`);
+
+  previewEl.innerHTML = `<span style="font-size:11.5px;color:var(--text);">Essa semana, <b>${req.person}</b> passaria de <b>${weekTotal}h</b> para <b>${projected}h</b> — ${deltaText}.</span>`;
+}
+
+function confirmRespondRequest(reqId, decision){
+  const req = requests.find(r => r.id === reqId);
+  if(!req) return;
+  const noteEl = document.getElementById('reqNote-'+reqId);
+  const note = noteEl ? noteEl.value.trim() : '';
+  const applyAsEl = document.getElementById('reqApplyAs-'+reqId);
+  const applyAs = applyAsEl ? applyAsEl.value : 'nenhum';
+
+  req.status = decision;
+  req.respondedBy = whoLabel();
+  req.respondedAt = new Date().toISOString();
+  req.responseNote = note || null;
+  req.appliedAs = decision === 'aprovado' ? applyAs : null;
+
+  if(decision === 'aprovado'){
+    if(applyAs === 'folga' || applyAs === 'atestado' || applyAs === 'homeoffice'){
+      if(!manualEvents[req.dateISO]) manualEvents[req.dateISO] = [];
+      if(!manualEvents[req.dateISO].some(e => e.person === req.person)){
+        manualEvents[req.dateISO].push({ person: req.person, type: applyAs });
+      }
+    } else if(applyAs === 'horario' && req.exitTime){
+      const startMin = getShiftStartMinutes(req.person);
+      const exitMin = timeStrToMinutes(req.exitTime);
+      let hrs = Math.round(((exitMin - startMin) / 60) * 10) / 10;
+      hrs = Math.max(0, Math.min(hrs, 8));
+      if(!earlyLeaves[req.dateISO]) earlyLeaves[req.dateISO] = {};
+      earlyLeaves[req.dateISO][req.person] = { hoursWorked: hrs, exitTime: req.exitTime };
+    }
+    recomputeFolga();
+  }
+
+  changeHistory.push({
+    when: new Date(), dateISO: req.dateISO, kind: 'solicitacao',
+    oldValue: `${req.person} — solicitação (pendente)`,
+    newValue: decision === 'aprovado' ? `Aprovada (${appliedAsLabel(req.appliedAs)})` : 'Rejeitada',
+    by: whoLabel(),
+  });
+
+  showToast(`Solicitação ${decision === 'aprovado' ? 'aprovada' : 'rejeitada'}.`, decision !== 'aprovado');
+  renderAll();
+  saveState();
+}
+
+function onSwap(dateISO, kind, slotIdx, newValue){
+  const arr = kind==='sat' ? satCrew[dateISO] : sunCrew[dateISO];
+  const oldValue = arr[slotIdx];
+  if(arr.includes(newValue) && newValue !== oldValue){
+    showToast(`${newValue} já está escalado(a) nesse mesmo dia. Escolha outra pessoa.`, true);
+    renderAll();
+    return;
+  }
+  if(newValue === oldValue) return;
+  arr[slotIdx] = newValue;
+  recomputeFolga();
+  changeHistory.push({ when: new Date(), dateISO, kind, oldValue, newValue, by: whoLabel() });
+  renderAll();
+  saveState();
+}
+
+// ================== RENDER: LIDER/MASTER PANEL ==================
+function renderMonthPanel(month){
+  const calHtml = buildMonthCalendar(YEAR, month);
+  const totalRows = buildMonthlyTotalTable();
+  const {headerCells, rows} = buildWeeklyTable(month);
+  return `
+    <div class="kpis">
+      <div class="kpi"><div class="lbl">Mês</div><div class="val cyan">${MONTH_NAMES[month]}/2026</div></div>
+      <div class="kpi"><div class="lbl">Vagas sábado / domingo</div><div class="val amber">4 / 2</div></div>
+      <div class="kpi"><div class="lbl">Máx. dias corridos</div><div class="val green">6 dias</div></div>
+      <div class="kpi"><div class="lbl">Meta contratual</div><div class="val violet">44h/semana</div></div>
+    </div>
+    <div class="sec-title">Horário de referência — segunda a sexta</div>
+    <table class="report schedule-ref"><thead><tr><th>Colaborador</th><th>Código</th><th>Horário</th></tr></thead><tbody>${buildScheduleRefRows()}</tbody></table>
+    <div class="sec-title">Escala — ${MONTH_NAMES[month]} 2026 (clique nos nomes para trocar)</div>
+    <div class="cal-head"><div>Seg</div><div>Ter</div><div>Qua</div><div>Qui</div><div>Sex</div><div>Sáb</div><div>Dom</div></div>
+    <div class="cal-grid">${calHtml}</div>
+    <div class="legend">
+      <span><span class="swatch" style="background:#ff5c9e"></span> T3 do sábado (09h–18h)</span>
+      <span><span class="swatch" style="background:rgba(255,180,84,.35)"></span> Plantão de sábado</span>
+      <span><span class="swatch" style="background:rgba(139,123,255,.35)"></span> Plantão de domingo</span>
+      <span><span class="swatch" style="background:rgba(61,220,151,.35)"></span> Folga (trabalhou domingo ou registro manual)</span>
+      <span><span class="swatch" style="background:rgba(255,107,107,.35)"></span> Falta (registro manual)</span>
+      <span><span class="swatch" style="background:rgba(75,227,255,.35)"></span> Atestado (registro manual)</span>
+      <span><span class="swatch" style="background:rgba(255,92,158,.35)"></span> Home Office (registro manual)</span>
+      <span><span class="swatch" style="background:#10151d;border:1px solid #1b232f"></span> Turno normal</span>
+    </div>
+    ${renderHistoryForMonth(month)}
+    <div class="sec-title">Resumo de horas — ${MONTH_NAMES[month]} (quebra semanal)</div>
+    <table class="matrix"><thead><tr><th>Colaborador</th><th>Time</th><th class="num">Total mês</th><th class="num">Média/sem.</th><th>Situação</th>${headerCells}</tr></thead><tbody>${rows}</tbody></table>
+    <div class="sec-title">Resumo de horas — Ago a Dez/2026 (todos os meses)</div>
+    <table class="report"><thead><tr><th>Colaborador</th><th>Time</th><th class="num">Agosto</th><th class="num">Setembro</th><th class="num">Outubro</th><th class="num">Novembro</th><th class="num">Dezembro</th><th class="num">Total período</th></tr></thead><tbody>${totalRows}</tbody></table>
+    <div class="note"><b>Regras aplicadas:</b> sábado sempre mescla Agendamento e Operacional (4 pessoas); domingo com 2 de qualquer time; ninguém repete sábado+domingo no mesmo fim de semana; quem trabalha domingo folga na semana seguinte, garantindo no máximo 6 dias corridos de trabalho. Qualquer troca recalcula esta tabela automaticamente e já é salva no Firebase para todos verem. Clique no ícone <b>⚙</b> no canto de qualquer dia pra adicionar um registro de <b>Folga</b>, <b>Falta</b> ou <b>Atestado</b> pra uma pessoa específica — Folga e Falta zeram as horas dela naquele dia nos resumos; Atestado só fica registrado como informação e não desconta horas.</div>
+  `;
+}
+
+// ================== RENDER: COP PANEL ==================
+function renderMonthPanelCOP(month, person){
+  const calHtml = buildMonthCalendarPersonal(YEAR, month, person);
+  const {headerCells, rows} = buildWeeklyTable(month, person);
+  const totalRows = buildMonthlyTotalTable(person);
+  const s = WEEKDAY_SCHEDULE[person];
+  return `
+    <div class="kpis">
+      <div class="kpi"><div class="lbl">Mês</div><div class="val cyan">${MONTH_NAMES[month]}/2026</div></div>
+      <div class="kpi"><div class="lbl">Meu horário padrão</div><div class="val amber">${s.code} · ${s.hours}</div></div>
+      <div class="kpi"><div class="lbl">Máx. dias corridos</div><div class="val green">6 dias</div></div>
+      <div class="kpi"><div class="lbl">Meta contratual</div><div class="val violet">44h/semana</div></div>
+    </div>
+    <div class="sec-title">Meu horário de referência — segunda a sexta</div>
+    <table class="report schedule-ref"><thead><tr><th>Colaborador</th><th>Código</th><th>Horário</th></tr></thead><tbody>${buildScheduleRefRows(person)}</tbody></table>
+    <div class="sec-title">Minha escala — ${MONTH_NAMES[month]} 2026</div>
+    <div class="cal-head"><div>Seg</div><div>Ter</div><div>Qua</div><div>Qui</div><div>Sex</div><div>Sáb</div><div>Dom</div></div>
+    <div class="cal-grid">${calHtml}</div>
+    <div class="legend">
+      <span><span class="swatch" style="background:rgba(255,180,84,.35)"></span> Plantão de sábado</span>
+      <span><span class="swatch" style="background:rgba(139,123,255,.35)"></span> Plantão de domingo</span>
+      <span><span class="swatch" style="background:rgba(61,220,151,.35)"></span> Folga</span>
+      <span><span class="swatch" style="background:rgba(255,107,107,.35)"></span> Falta</span>
+      <span><span class="swatch" style="background:rgba(75,227,255,.35)"></span> Atestado</span>
+      <span><span class="swatch" style="background:rgba(255,92,158,.35)"></span> Home Office</span>
+      <span><span class="swatch" style="background:#10151d;border:1px solid #1b232f"></span> Turno normal</span>
+    </div>
+    <div class="sec-title">Meu resumo de horas — ${MONTH_NAMES[month]} (quebra semanal)</div>
+    <table class="matrix"><thead><tr><th>Colaborador</th><th>Time</th><th class="num">Total mês</th><th class="num">Média/sem.</th><th>Situação</th>${headerCells}</tr></thead><tbody>${rows}</tbody></table>
+    <div class="sec-title">Meu resumo de horas — Ago a Dez/2026</div>
+    <table class="report"><thead><tr><th>Colaborador</th><th>Time</th><th class="num">Agosto</th><th class="num">Setembro</th><th class="num">Outubro</th><th class="num">Novembro</th><th class="num">Dezembro</th><th class="num">Total período</th></tr></thead><tbody>${totalRows}</tbody></table>
+    <div class="note">Este é o seu painel individual — você visualiza apenas os seus próprios turnos, plantões e folgas. Alterações na escala são feitas pelo Líder ou Master.</div>
+  `;
+}
+
+function renderMyRequestsSection(person){
+  const todayISO = new Date().toISOString().slice(0,10);
+  const myReqs = requests.filter(r => r.person === person).slice().sort((a,b) => b.createdAt.localeCompare(a.createdAt));
+  const rows = myReqs.map(r=>{
+    const d = fromISO(r.dateISO);
+    const dateLabel = `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`;
+    const horario = r.exitTime ? r.exitTime : '—';
+    const homeofficeTag = r.homeoffice ? `<span class="manual-chip homeoffice" style="margin-left:6px;">💻 Home Office</span>` : '';
+    const noteRow = r.responseNote ? `<div style="margin-top:4px;font-size:11px;color:var(--muted);"><b>Resposta:</b> ${r.responseNote}</div>` : '';
+    const appliedRow = r.status === 'aprovado' ? `<div style="margin-top:4px;font-size:10.5px;color:var(--cyan);">${appliedAsLabel(r.appliedAs)}</div>` : '';
+    return `<tr>
+      <td>${dateLabel}</td>
+      <td>${horario}</td>
+      <td>${r.description}${homeofficeTag}${noteRow}${appliedRow}</td>
+      <td>${requestStatusBadge(r.status)}</td>
+    </tr>`;
+  }).join('');
+
+  return `
+    <div class="sec-title">📝 Minhas solicitações</div>
+    <div class="note">Precisa sair mais cedo, tirar uma folga, avisar um atestado, pedir Home Office ou qualquer outra coisa num dia específico? Escreva aqui — o Líder ou Master aprova ou rejeita, e você vê a resposta abaixo.</div>
+    <div style="background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 18px;margin-bottom:20px;">
+      <label class="login-label">Data</label>
+      <input type="date" id="reqDate" class="login-field" min="${todayISO}">
+
+      <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--text);margin-bottom:10px;cursor:pointer;">
+        <input type="checkbox" id="reqHasExitTime" onchange="toggleReqExitTime(this.checked)">
+        Vou sair mais cedo em um horário específico
+      </label>
+
+      <div id="reqExitTimeWrap" style="display:none;">
+        <label class="login-label">Horário que pretende sair</label>
+        <input type="time" id="reqExitTime" class="login-field">
+      </div>
+
+      <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--text);margin-bottom:10px;cursor:pointer;">
+        <input type="checkbox" id="reqHomeoffice">
+        💻 Estou solicitando Home Office nesse dia
+      </label>
+
+      <label class="login-label">Sua solicitação</label>
+      <textarea id="reqDescription" rows="3" class="login-field" style="resize:vertical;font-family:'Space Grotesk',sans-serif;" placeholder="Ex: preciso de atestado médico por causa de uma consulta / preciso sair mais cedo por motivo pessoal / gostaria de folga nesse dia / preciso trabalhar de casa"></textarea>
+
+      <div id="reqError" style="display:none;color:var(--red);font-size:11.5px;font-family:'JetBrains Mono',monospace;margin-bottom:12px;"></div>
+
+      <button class="tab-btn active" style="padding:10px 20px;" onclick="submitRequest()">Enviar solicitação</button>
+    </div>
+    ${myReqs.length ? `
+    <table class="report">
+      <thead><tr><th>Data</th><th>Horário</th><th>Solicitação</th><th>Status</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>` : `<div class="note">Você ainda não enviou nenhuma solicitação.</div>`}
+  `;
+}
+
+// ================== CONFIGURAÇÕES / FINANCEIRO (MASTER) ==================
+function renderRequestsPanel(){
+  const pending = requests.filter(r => r.status === 'pendente').slice().sort((a,b) => a.createdAt.localeCompare(b.createdAt));
+  const resolved = requests.filter(r => r.status !== 'pendente').slice().sort((a,b) => b.respondedAt.localeCompare(a.respondedAt));
+
+  const pendingRows = pending.map(r=>{
+    const d = fromISO(r.dateISO);
+    const dateLabel = `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`;
+    const horario = r.exitTime ? r.exitTime : '—';
+    const homeofficeTag = r.homeoffice ? `<span class="manual-chip homeoffice" style="margin-left:6px;">💻 Home Office</span>` : '';
+    return `<tr>
+      <td>${r.person}</td>
+      <td>${dateLabel}</td>
+      <td>${horario}</td>
+      <td>${r.description}${homeofficeTag}</td>
+      <td>
+        <button class="tab-btn" style="color:var(--green);border-color:rgba(61,220,151,.4);" onclick="askRespondRequest('${r.id}','aprovado')">Aprovar</button>
+        <button class="tab-btn" style="color:var(--red);border-color:rgba(255,107,107,.4);" onclick="askRespondRequest('${r.id}','rejeitado')">Rejeitar</button>
+        <div id="reqConfirm-${r.id}"></div>
+      </td>
+    </tr>`;
+  }).join('');
+
+  const resolvedRows = resolved.map(r=>{
+    const d = fromISO(r.dateISO);
+    const dateLabel = `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`;
+    const horario = r.exitTime ? r.exitTime : '—';
+    const homeofficeTag = r.homeoffice ? `<span class="manual-chip homeoffice" style="margin-left:6px;">💻 Home Office</span>` : '';
+    const appliedRow = r.status === 'aprovado' ? `<div style="margin-top:4px;font-size:10.5px;color:var(--cyan);">${appliedAsLabel(r.appliedAs)}</div>` : '';
+    return `<tr>
+      <td>${r.person}</td>
+      <td>${dateLabel}</td>
+      <td>${horario}</td>
+      <td>${r.description}${homeofficeTag}${r.responseNote ? `<div style="margin-top:4px;font-size:11px;color:var(--muted);"><b>Resposta:</b> ${r.responseNote}</div>` : ''}${appliedRow}</td>
+      <td>${requestStatusBadge(r.status)}</td>
+      <td style="font-size:11px;color:var(--muted);">${r.respondedBy || '—'}</td>
+    </tr>`;
+  }).join('');
+
+  return `
+    <div class="sec-title">📝 Solicitações pendentes ${pending.length ? `<span class="history-count">${pending.length}</span>` : ''}</div>
+    ${pending.length ? `
+    <table class="report">
+      <thead><tr><th>COP</th><th>Data</th><th>Horário</th><th>Solicitação</th><th>Ação</th></tr></thead>
+      <tbody>${pendingRows}</tbody>
+    </table>` : `<div class="note">Nenhuma solicitação pendente no momento.</div>`}
+
+    <div class="sec-title">Histórico de solicitações</div>
+    ${resolved.length ? `
+    <table class="report">
+      <thead><tr><th>COP</th><th>Data</th><th>Horário</th><th>Solicitação</th><th>Status</th><th>Respondido por</th></tr></thead>
+      <tbody>${resolvedRows}</tbody>
+    </table>` : `<div class="note">Nenhuma solicitação respondida ainda.</div>`}
+
+    <div class="note">Ao aprovar, você escolhe como aplicar: marcar como <b>Folga</b> (zera as horas do dia), <b>Atestado</b> (só fica registrado, não desconta horas), recalcular as horas pelo <b>horário informado</b> (se a pessoa marcou a opção de sair mais cedo), ou aprovar sem nenhum ajuste automático.</div>
+
+    ${currentUser.role === 'master' ? `
+    <div class="clear-history-area" id="clear-area-requests">
+      <button class="tab-btn" style="color:var(--red);border-color:rgba(255,107,107,.4);" onclick="toggleClearRequestsForm()">Limpar todo o histórico de solicitações</button>
+    </div>` : ''}
+  `;
+}
+
+function toggleClearRequestsForm(){
+  const area = document.getElementById('clear-area-requests');
+  area.innerHTML = `
+    <div class="clear-confirm">
+      <span>Digite a senha de gestor para confirmar:</span>
+      <input type="password" id="pin-requests" placeholder="Senha" onkeydown="if(event.key==='Enter') confirmClearRequests()">
+      <button class="tab-btn" style="color:var(--green);border-color:rgba(61,220,151,.4);" onclick="confirmClearRequests()">Confirmar</button>
+      <button class="tab-btn" onclick="renderAll()">Cancelar</button>
+    </div>
+  `;
+  document.getElementById('pin-requests').focus();
+}
+
+function confirmClearRequests(){
+  if(!currentUser || currentUser.role !== 'master'){
+    showToast('Somente o Master pode limpar o histórico de solicitações.', true);
+    return;
+  }
+  const input = document.getElementById('pin-requests');
+  if(input.value === MANAGER_PIN){
+    requests = [];
+    showToast('Histórico de solicitações apagado com sucesso.', false);
+    renderAll();
+    saveState();
+  } else {
+    showToast('Senha incorreta — histórico não foi apagado.', true);
+  }
+}
+
+function renderPasswordManagerPanel(){
+  const pwRows = Object.keys(APP_USERS).map(u=>{
+    const c = APP_USERS[u];
+    const nome = c.role === 'cop' ? c.person : (c.role === 'lider' ? c.person : 'Master');
+    return `<tr>
+      <td>${nome}</td>
+      <td><span class="code-chip">${u}</span></td>
+      <td><button class="tab-btn" style="color:var(--red);border-color:rgba(255,107,107,.4);" onclick="askResetPassword('${u}','${nome}')">Redefinir senha</button></td>
+    </tr>`;
+  }).join('');
+
+  return `
+    <div class="sec-title">🔑 Gerenciador de senhas — alguém esqueceu a senha?</div>
+    <div class="note">
+      Clique em <b>"Redefinir senha"</b> ao lado do nome da pessoa. Isso apaga a senha atual dela — no próximo login, o que ela digitar já vira a senha nova, automaticamente (igual no primeiro acesso).
+    </div>
+    <table class="report">
+      <thead><tr><th>Nome</th><th>Usuário</th><th></th></tr></thead>
+      <tbody>${pwRows}</tbody>
+    </table>
+    <div id="resetConfirmArea"></div>
+  `;
+}
+
+function askResetPassword(username, nome){
+  const area = document.getElementById('resetConfirmArea');
+  area.innerHTML = `
+    <div class="clear-confirm">
+      <span>Confirma redefinir a senha de <b>${nome}</b>? Ela vai precisar criar uma senha nova no próximo login.</span>
+      <button class="tab-btn" style="color:var(--red);border-color:rgba(255,107,107,.4);" onclick="confirmResetPassword('${username}')">Confirmar</button>
+      <button class="tab-btn" onclick="document.getElementById('resetConfirmArea').innerHTML=''">Cancelar</button>
+    </div>
+  `;
+}
+
+async function confirmResetPassword(username){
+  try{
+    await db.collection('auth').doc(username).delete();
+    showToast(`Senha de ${username} redefinida. Ela cria uma nova no próximo login.`, false);
+    document.getElementById('resetConfirmArea').innerHTML = '';
+  }catch(err){
+    console.error('Reset password error:', err);
+    showToast('Falha ao redefinir — verifique as regras do Firestore.', true);
+  }
+}
+
+function renderConfigPanel(){
+  const rows = Object.keys(APP_USERS).map(u=>{
+    const c = APP_USERS[u];
+    const perfil = c.role==='cop' ? 'COP' : (c.role==='lider' ? 'Líder' : 'Master');
+    const visualiza = c.role==='cop' ? `Somente o painel de ${c.person}` : (c.role==='lider' ? 'Escala de todos os COPs (com edição)' : 'Escala de todos + Configurações e Financeiro');
+    return `<tr><td>${u}</td><td>${perfil}</td><td>${visualiza}</td></tr>`;
+  }).join('');
+
+  return `
+    <div class="sec-title">Configurações</div>
+    <div class="note"><b>Senha de gestor (limpar histórico de trocas):</b> definida no código como <span class="code-chip">${MANAGER_PIN}</span>. Para alterar, edite a constante <b>MANAGER_PIN</b> no arquivo.</div>
+
+    <div class="sec-title">Usuários com acesso</div>
+    <table class="report"><thead><tr><th>Usuário</th><th>Perfil</th><th>Visualiza</th></tr></thead><tbody>${rows}</tbody></table>
+
+    ${renderPasswordManagerPanel()}
+
+    <div class="note warn"><b>Regras de segurança do Firestore:</b> nesse modelo (igual ao seu outro projeto), as coleções <span class="code-chip">auth</span> e <span class="code-chip">schedule</span> ficam com leitura/escrita livres — a proteção real é a senha (guardada como hash) e o fato de a interface não expor os controles de edição pra quem não é Líder/Master. Veja o texto de regras completo na mensagem que acompanha este arquivo.</div>
+  `;
+}
+function renderFinanceiroPanel(){
+  return `<div class="sec-title">Financeiro</div><div class="note">Área reservada para informações financeiras (ex: custo de hora extra, folha por colaborador, orçamento do time). Nenhum dado foi adicionado ainda — este espaço está pronto para receber esse conteúdo quando você definir o que deve aparecer aqui.</div>`;
+}
+
+
+
+
+// ================== HISTORY ==================
+const DOW_NAMES = ['Segunda','Terça','Quarta','Quinta','Sexta','Sábado','Domingo'];
+function renderHistoryForMonth(month){
+  const entries = changeHistory.map((h, idx) => ({...h, idx})).filter(h => fromISO(h.dateISO).getMonth()+1 === month).reverse();
+  if(entries.length === 0){
+    return `<div class="history-block"><div class="history-title">📋 Histórico de alterações — ${MONTH_NAMES[month]}</div><div class="history-empty">Nenhuma troca feita em ${MONTH_NAMES[month]} ainda. Toda alteração que você fizer na escala acima aparece aqui.</div></div>`;
+  }
+  const rows = entries.map(h=>{
+    const d = fromISO(h.dateISO);
+    const dowLabel = DOW_NAMES[dow(d)];
+    const dateLabel = `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`;
+    const kindLabel = h.kind==='sat' ? 'Sábado' : (h.kind==='sun' ? 'Domingo' : 'Registro manual');
+    const whenLabel = h.when.toLocaleString('pt-BR');
+    const whoLabelText = h.by || '—';
+    return `<tr><td>${whenLabel}</td><td><span class="code-chip">${whoLabelText}</span></td><td>${dateLabel} (${dowLabel})</td><td>${kindLabel}</td><td>${h.oldValue}</td><td class="arrow">→</td><td>${h.newValue}</td></tr>`;
+  }).join('');
+  return `
+    <div class="history-block">
+      <div class="history-title">📋 Histórico de alterações — ${MONTH_NAMES[month]} <span class="history-count">${entries.length} troca${entries.length>1?'s':''}</span></div>
+      <table class="report history-table"><thead><tr><th>Quando</th><th>Quem</th><th>Dia afetado</th><th>Plantão</th><th>Antes</th><th></th><th>Depois</th></tr></thead><tbody>${rows}</tbody></table>
+      <div class="clear-history-area" id="clear-area-${month}">
+        <button class="tab-btn" style="color:var(--red);border-color:rgba(255,107,107,.4);" onclick="toggleClearForm(${month})">Limpar todo o histórico</button>
+      </div>
+    </div>
+  `;
+}
+function toggleClearForm(month){
+  const area = document.getElementById('clear-area-'+month);
+  area.innerHTML = `
+    <div class="clear-confirm">
+      <span>Digite a senha de gestor para confirmar:</span>
+      <input type="password" id="pin-${month}" placeholder="Senha" onkeydown="if(event.key==='Enter') confirmClearHistory(${month})">
+      <button class="tab-btn" style="color:var(--green);border-color:rgba(61,220,151,.4);" onclick="confirmClearHistory(${month})">Confirmar</button>
+      <button class="tab-btn" onclick="renderAll()">Cancelar</button>
+    </div>
+  `;
+  document.getElementById('pin-'+month).focus();
+}
+function confirmClearHistory(month){
+  const input = document.getElementById('pin-'+month);
+  if(input.value === MANAGER_PIN){
+    changeHistory = [];
+    showToast('Histórico apagado com sucesso.', false);
+    renderAll();
+    saveState();
+  } else {
+    showToast('Senha incorreta — histórico não foi apagado.', true);
+  }
+}
+
+// ================== TABS / RENDER ==================
+function buildTabs(){
+  const bar = document.getElementById('tabsBar');
+  let tabs = [8,9,10,11,12].map(m=>({id:String(m), label:MONTH_NAMES[m].toUpperCase()}));
+  if(currentUser.role === 'master'){
+    tabs.push({id:'solicitacoes', label:'📝 SOLICITAÇÕES'});
+    tabs.push({id:'config', label:'⚙️ CONFIGURAÇÕES'});
+    tabs.push({id:'financeiro', label:'💰 FINANCEIRO'});
+  } else if(currentUser.role === 'lider'){
+    tabs.push({id:'solicitacoes', label:'📝 SOLICITAÇÕES'});
+    tabs.push({id:'senhas', label:'🔑 SENHAS'});
+  } else if(currentUser.role === 'cop'){
+    tabs.push({id:'solicitacoes', label:'📝 MINHAS SOLICITAÇÕES'});
+  }
+  bar.innerHTML = tabs.map((t,i)=>`<button class="tab-btn${i===0?' active':''}" data-tab="${t.id}" onclick="switchTab('${t.id}')">${t.label}</button>`).join('');
+}
+function switchTab(tabId){
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.toggle('active', b.dataset.tab===String(tabId)));
+  document.querySelectorAll('.panel-view').forEach(p=>p.classList.toggle('active', p.id==='panel-'+tabId));
+}
+function renderAll(){
+  const activeTab = document.querySelector('.tab-btn.active')?.dataset.tab || '8';
+  const container = document.getElementById('monthPanels');
+  container.innerHTML = '';
+  [8,9,10,11,12].forEach(m=>{
+    const div = document.createElement('div');
+    div.className = 'panel-view' + (String(m)===activeTab ? ' active' : '');
+    div.id = 'panel-'+m;
+    div.innerHTML = (currentUser.role === 'cop') ? renderMonthPanelCOP(m, currentUser.person) : renderMonthPanel(m);
+    container.appendChild(div);
+  });
+  if(currentUser.role === 'master' || currentUser.role === 'lider'){
+    const reqDiv = document.createElement('div');
+    reqDiv.className = 'panel-view' + (activeTab==='solicitacoes' ? ' active' : '');
+    reqDiv.id = 'panel-solicitacoes';
+    reqDiv.innerHTML = renderRequestsPanel();
+    container.appendChild(reqDiv);
+  } else if(currentUser.role === 'cop'){
+    const reqDiv = document.createElement('div');
+    reqDiv.className = 'panel-view' + (activeTab==='solicitacoes' ? ' active' : '');
+    reqDiv.id = 'panel-solicitacoes';
+    reqDiv.innerHTML = renderMyRequestsSection(currentUser.person);
+    container.appendChild(reqDiv);
+  }
+  if(currentUser.role === 'master'){
+    const configDiv = document.createElement('div');
+    configDiv.className = 'panel-view' + (activeTab==='config' ? ' active' : '');
+    configDiv.id = 'panel-config';
+    configDiv.innerHTML = renderConfigPanel();
+    container.appendChild(configDiv);
+
+    const finDiv = document.createElement('div');
+    finDiv.className = 'panel-view' + (activeTab==='financeiro' ? ' active' : '');
+    finDiv.id = 'panel-financeiro';
+    finDiv.innerHTML = renderFinanceiroPanel();
+    container.appendChild(finDiv);
+  } else if(currentUser.role === 'lider'){
+    const senhasDiv = document.createElement('div');
+    senhasDiv.className = 'panel-view' + (activeTab==='senhas' ? ' active' : '');
+    senhasDiv.id = 'panel-senhas';
+    senhasDiv.innerHTML = renderPasswordManagerPanel();
+    container.appendChild(senhasDiv);
+  }
+}
+
+// ================== FIRESTORE: DADOS COMPARTILHADOS DA ESCALA ==================
+const SCHEDULE_DOC = db.collection('schedule').doc('current');
+
+function applyRemoteData(data){
+  if(!data) return false;
+  if(data.satCrew && data.sunCrew){
+    satCrew = data.satCrew;
+    sunCrew = data.sunCrew;
+    satT3 = data.satT3 || {};
+    manualEvents = data.manualEvents || {};
+    earlyLeaves = data.earlyLeaves || {};
+    requests = data.requests || [];
+    changeHistory = (data.changeHistory || []).map(h => ({...h, when: h.when instanceof Date ? h.when : (h.when && h.when.toDate ? h.when.toDate() : new Date(h.when))}));
+    return true;
+  }
+  return false;
+}
+
+async function saveState(){
+  try{
+    const payload = {
+      satCrew, sunCrew, satT3, manualEvents, earlyLeaves, requests,
+      changeHistory: changeHistory.map(h => ({...h, when: h.when.toISOString()})),
+      savedAt: new Date().toISOString(),
+    };
+    await SCHEDULE_DOC.set(payload);
+  }catch(err){
+    console.error('Firestore save error:', err);
+    showToast('Falha ao salvar no Firebase — verifique as regras de segurança do Firestore.', true);
+  }
+}
+
+async function loadStateOnce(){
+  try{
+    const snap = await SCHEDULE_DOC.get();
+    return applyRemoteData(snap.exists ? snap.data() : null);
+  }catch(err){
+    console.error('Firestore load error:', err);
+    return false;
+  }
+}
+
+function exportState(){
+  const payload = { satCrew, sunCrew, satT3, manualEvents, earlyLeaves, requests, changeHistory: changeHistory.map(h => ({...h, when: h.when.toISOString()})) };
+  const box = document.getElementById('exportBox');
+  const ta = document.getElementById('exportTextarea');
+  ta.value = JSON.stringify(payload, null, 2);
+  box.style.display = 'block';
+  ta.focus();
+  ta.select();
+  showToast('Estado exportado — copie o texto abaixo se quiser guardar um backup.', false);
+}
+
+// ================== BOOT (após login) ==================
+async function bootDashboard(){
+  const loaded = await loadStateOnce();
+  recomputeFolga();
+  buildTabs();
+  renderAll();
+  if(loaded) showToast('Escala carregada do Firebase.', false);
+  else showToast('Nenhuma escala salva ainda no Firebase — mostrando dados padrão.', false);
+
+  // Mantém todo mundo sincronizado em tempo real: qualquer troca feita por
+  // Líder/Master aparece automaticamente para quem estiver com a tela aberta.
+  unsubscribeSchedule = SCHEDULE_DOC.onSnapshot(snap=>{
+    if(!snap.exists) return;
+    const changed = applyRemoteData(snap.data());
+    if(changed){
+      recomputeFolga();
+      renderAll();
+    }
+  }, err=>{
+    console.error('Snapshot listener error:', err);
+  });
+}
+
+// ================== INIT (tela de login) ==================
+if(!FIREBASE_CONFIGURED){
+  const w = document.getElementById('configWarning');
+  w.innerHTML = '⚠️ O Firebase ainda não foi configurado neste arquivo. Preencha o objeto <b>firebaseConfig</b> no início do &lt;script&gt; com os dados do seu projeto antes de usar.';
+  w.style.display = 'block';
+}
+populateLoginSelect(loginCategory);
+</script>
+</body>
+</html>
