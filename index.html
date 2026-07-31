@@ -103,6 +103,7 @@
   .status{display:inline-flex;align-items:center;gap:6px;font-family:'JetBrains Mono',monospace;font-size:10.5px;padding:3px 9px;border-radius:20px;font-weight:600;white-space:nowrap;}
   .status.ok{background:rgba(61,220,151,.12);color:var(--green);}
   .status.watch{background:rgba(255,180,84,.12);color:var(--amber);}
+  .status.rejected{background:rgba(255,107,107,.12);color:var(--red);}
   .delta-pos{color:var(--amber);font-weight:600;}
   .delta-neg{color:var(--cyan);font-weight:600;}
 
@@ -287,6 +288,8 @@ let folgaPlan = {};
 let changeHistory = [];
 let satT3 = {"2026-08-01":0,"2026-08-08":1,"2026-08-15":1,"2026-08-22":2,"2026-08-29":3};
 let manualEvents = {}; // dateISO -> [{person, type:'folga'|'falta'}] — registros manuais em qualquer dia
+let earlyLeaves = {}; // dateISO -> { person: {hoursWorked, exitTime} } — aplicado quando uma solicitação de sair mais cedo é aprovada
+let requests = []; // solicitações dos COPs: {id, dateISO, person, type, description, exitTime, status, createdAt, respondedBy, respondedAt, responseNote}
 const MANAGER_PIN = '2026COP'; // senha de gestor para limpar histórico — altere aqui
 
 const WEEKDAY_SCHEDULE = {
@@ -489,10 +492,32 @@ function getManualEvent(dateISO, person){
   const found = list.find(e => e.person === person);
   return found ? found.type : null;
 }
+function getEarlyLeave(dateISO, person){
+  return (earlyLeaves[dateISO] && earlyLeaves[dateISO][person]) || null;
+}
+function parseHourToken(tok){
+  tok = tok.trim().replace('h','');
+  if(tok.includes(':')){
+    const [h,m] = tok.split(':').map(Number);
+    return h*60 + (m||0);
+  }
+  return Number(tok)*60;
+}
+function getShiftStartMinutes(person){
+  const hours = WEEKDAY_SCHEDULE[person].hours; // ex: "08h às 17h"
+  const startTok = hours.split(' às ')[0];
+  return parseHourToken(startTok);
+}
+function timeStrToMinutes(t){
+  const [h,m] = t.split(':').map(Number);
+  return h*60 + (m||0);
+}
 function dayHours(person, d){
   const iso = toISO(d);
   const w = dow(d);
   if(getManualEvent(iso, person)) return 0; // folga ou falta manual sempre zera as horas do dia
+  const early = getEarlyLeave(iso, person);
+  if(early) return early.hoursWorked; // saída antecipada aprovada substitui as horas do dia
   if(w===5) return (satCrew[iso]||[]).includes(person) ? 8 : 0;
   if(w===6) return (sunCrew[iso]||[]).includes(person) ? 8 : 0;
   return hasFolga(iso, person) ? 0 : 8;
@@ -614,7 +639,9 @@ function dayCell(d){
     const chips = folgaPlan[iso].map(n=>`<span class="chip folga-chip">Folga: ${n}</span>`).join('<br>');
     return `<div class="day folga">${dayGearButton(iso)}<div class="num">${d.getDate()}</div><div class="tag">Folga</div>${chips}${renderManualEventsBlock(iso)}</div>`;
   }
-  return `<div class="day normal">${dayGearButton(iso)}<div class="num">${d.getDate()}</div><div class="tag">Equipe completa</div>${renderManualEventsBlock(iso)}</div>`;
+  const earlyToday = earlyLeaves[iso] || {};
+  const earlyChips = Object.keys(earlyToday).map(p=>`<span class="chip manual-chip atestado">${p} · saída ${earlyToday[p].exitTime}</span>`).join('');
+  return `<div class="day normal">${dayGearButton(iso)}<div class="num">${d.getDate()}</div><div class="tag">Equipe completa</div>${earlyChips}${renderManualEventsBlock(iso)}</div>`;
 }
 function onSetSatT3(dateISO, value){
   satT3[dateISO] = (value === '' ? null : Number(value));
@@ -636,7 +663,7 @@ function addManualEvent(dateISO){
   }
   manualEvents[dateISO].push({ person, type });
   openManualForms.delete(dateISO);
-  changeHistory.push({ when: new Date(), dateISO, kind: 'manual', oldValue: '(sem registro)', newValue: `${person} — ${manualTypeLabel(type)}` });
+  changeHistory.push({ when: new Date(), dateISO, kind: 'manual', oldValue: '(sem registro)', newValue: `${person} — ${manualTypeLabel(type)}`, by: whoLabel() });
   renderAll();
   saveState();
 }
@@ -647,7 +674,7 @@ function removeManualEvent(dateISO, idx){
   const removed = list[idx];
   list.splice(idx, 1);
   if(list.length === 0) delete manualEvents[dateISO];
-  changeHistory.push({ when: new Date(), dateISO, kind: 'manual', oldValue: `${removed.person} — ${manualTypeLabel(removed.type)}`, newValue: '(removido)' });
+  changeHistory.push({ when: new Date(), dateISO, kind: 'manual', oldValue: `${removed.person} — ${manualTypeLabel(removed.type)}`, newValue: '(removido)', by: whoLabel() });
   renderAll();
   saveState();
 }
@@ -659,7 +686,7 @@ function addSlot(dateISO, kind){
   const newPerson = available[0] || ALL_PEOPLE[0];
   arr.push(newPerson);
   recomputeFolga();
-  changeHistory.push({ when: new Date(), dateISO, kind, oldValue: '(vaga vazia)', newValue: `${newPerson} (vaga adicionada)` });
+  changeHistory.push({ when: new Date(), dateISO, kind, oldValue: '(vaga vazia)', newValue: `${newPerson} (vaga adicionada)`, by: whoLabel() });
   renderAll();
   saveState();
 }
@@ -679,7 +706,7 @@ function removeSlot(dateISO, kind, idx){
     else if(t3Idx != null && t3Idx > idx) satT3[dateISO] = t3Idx - 1;
   }
   recomputeFolga();
-  changeHistory.push({ when: new Date(), dateISO, kind, oldValue: `${removed} (vaga removida)`, newValue: '(vaga vazia)' });
+  changeHistory.push({ when: new Date(), dateISO, kind, oldValue: `${removed} (vaga removida)`, newValue: '(vaga vazia)', by: whoLabel() });
   renderAll();
   saveState();
 }
@@ -707,6 +734,10 @@ function dayCellPersonal(d, person){
   }
   if(manual === 'atestado'){
     return `<div class="day atestado"><div class="num">${d.getDate()}</div><div class="tag">Atestado</div></div>`;
+  }
+  const early = getEarlyLeave(iso, person);
+  if(early){
+    return `<div class="day atestado"><div class="num">${d.getDate()}</div><div class="tag">Saída às ${early.exitTime} (${early.hoursWorked}h)</div></div>`;
   }
   if(w===5){
     if((satCrew[iso]||[]).includes(person)){
@@ -795,6 +826,124 @@ function buildWeeklyTable(month, personFilter){
 }
 
 // ================== SWAP (LIDER/MASTER) ==================
+function whoLabel(){
+  if(!currentUser) return 'Desconhecido';
+  if(currentUser.role === 'cop') return `${currentUser.person} (COP)`;
+  if(currentUser.role === 'lider') return `${currentUser.person} (Líder)`;
+  return 'Master';
+}
+
+// ================== SOLICITAÇÕES DOS COPS ==================
+function requestTypeLabel(type){
+  if(type === 'saida_antecipada') return 'Sair mais cedo';
+  if(type === 'folga') return 'Folga';
+  return 'Atestado';
+}
+function requestStatusBadge(status){
+  if(status === 'aprovado') return `<span class="status ok"><span class="dot"></span>Aprovado</span>`;
+  if(status === 'rejeitado') return `<span class="status rejected"><span class="dot"></span>Rejeitado</span>`;
+  return `<span class="status watch"><span class="dot"></span>Pendente</span>`;
+}
+function toggleReqExitTime(type){
+  const wrap = document.getElementById('reqExitTimeWrap');
+  if(wrap) wrap.style.display = (type === 'saida_antecipada') ? 'block' : 'none';
+}
+
+function submitRequest(){
+  const dateInput = document.getElementById('reqDate').value;
+  const type = document.getElementById('reqType').value;
+  const exitTimeEl = document.getElementById('reqExitTime');
+  const exitTime = exitTimeEl ? exitTimeEl.value : '';
+  const descEl = document.getElementById('reqDescription');
+  const description = descEl.value.trim();
+  const errEl = document.getElementById('reqError');
+  errEl.style.display = 'none';
+
+  if(!dateInput){ errEl.textContent = 'Escolha uma data.'; errEl.style.display='block'; return; }
+  const d = fromISO(dateInput);
+  if(d < START || d > END){ errEl.textContent = 'Escolha uma data dentro do período (Ago–Dez/2026).'; errEl.style.display='block'; return; }
+  if(type === 'saida_antecipada' && !exitTime){ errEl.textContent = 'Informe o horário que pretende sair.'; errEl.style.display='block'; return; }
+  if(!description){ errEl.textContent = 'Escreva uma descrição explicando o motivo.'; errEl.style.display='block'; return; }
+
+  requests.push({
+    id: 'req_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
+    dateISO: dateInput,
+    person: currentUser.person,
+    type,
+    description,
+    exitTime: type === 'saida_antecipada' ? exitTime : null,
+    status: 'pendente',
+    createdAt: new Date().toISOString(),
+    respondedBy: null,
+    respondedAt: null,
+    responseNote: null,
+  });
+
+  descEl.value = '';
+  document.getElementById('reqDate').value = '';
+  showToast('Solicitação enviada! Aguardando aprovação.', false);
+  renderAll();
+  saveState();
+}
+
+function askRespondRequest(reqId, decision){
+  const area = document.getElementById('reqConfirm-'+reqId);
+  if(!area) return;
+  const label = decision === 'aprovado' ? 'Aprovar' : 'Rejeitar';
+  const color = decision === 'aprovado' ? 'var(--green)' : 'var(--red)';
+  const borderColor = decision === 'aprovado' ? 'rgba(61,220,151,.4)' : 'rgba(255,107,107,.4)';
+  area.innerHTML = `
+    <div class="clear-confirm" style="flex-direction:column;align-items:stretch;">
+      <span>Observação (opcional) — o COP também vê isso:</span>
+      <textarea id="reqNote-${reqId}" rows="2" style="width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:6px;padding:8px;font-size:12px;margin:6px 0;font-family:'Space Grotesk',sans-serif;"></textarea>
+      <div style="display:flex;gap:8px;">
+        <button class="tab-btn" style="color:${color};border-color:${borderColor};" onclick="confirmRespondRequest('${reqId}','${decision}')">Confirmar ${label.toLowerCase()}</button>
+        <button class="tab-btn" onclick="renderAll()">Cancelar</button>
+      </div>
+    </div>
+  `;
+}
+
+function confirmRespondRequest(reqId, decision){
+  const req = requests.find(r => r.id === reqId);
+  if(!req) return;
+  const noteEl = document.getElementById('reqNote-'+reqId);
+  const note = noteEl ? noteEl.value.trim() : '';
+
+  req.status = decision;
+  req.respondedBy = whoLabel();
+  req.respondedAt = new Date().toISOString();
+  req.responseNote = note || null;
+
+  if(decision === 'aprovado'){
+    if(req.type === 'folga' || req.type === 'atestado'){
+      if(!manualEvents[req.dateISO]) manualEvents[req.dateISO] = [];
+      if(!manualEvents[req.dateISO].some(e => e.person === req.person)){
+        manualEvents[req.dateISO].push({ person: req.person, type: req.type });
+      }
+    } else if(req.type === 'saida_antecipada'){
+      const startMin = getShiftStartMinutes(req.person);
+      const exitMin = timeStrToMinutes(req.exitTime);
+      let hrs = Math.round(((exitMin - startMin) / 60) * 10) / 10;
+      hrs = Math.max(0, Math.min(hrs, 8));
+      if(!earlyLeaves[req.dateISO]) earlyLeaves[req.dateISO] = {};
+      earlyLeaves[req.dateISO][req.person] = { hoursWorked: hrs, exitTime: req.exitTime };
+    }
+    recomputeFolga();
+  }
+
+  changeHistory.push({
+    when: new Date(), dateISO: req.dateISO, kind: 'solicitacao',
+    oldValue: `${req.person} — ${requestTypeLabel(req.type)} (pendente)`,
+    newValue: decision === 'aprovado' ? 'Aprovada' : 'Rejeitada',
+    by: whoLabel(),
+  });
+
+  showToast(`Solicitação ${decision === 'aprovado' ? 'aprovada' : 'rejeitada'}.`, decision !== 'aprovado');
+  renderAll();
+  saveState();
+}
+
 function onSwap(dateISO, kind, slotIdx, newValue){
   const arr = kind==='sat' ? satCrew[dateISO] : sunCrew[dateISO];
   const oldValue = arr[slotIdx];
@@ -806,7 +955,7 @@ function onSwap(dateISO, kind, slotIdx, newValue){
   if(newValue === oldValue) return;
   arr[slotIdx] = newValue;
   recomputeFolga();
-  changeHistory.push({ when: new Date(), dateISO, kind, oldValue, newValue });
+  changeHistory.push({ when: new Date(), dateISO, kind, oldValue, newValue, by: whoLabel() });
   renderAll();
   saveState();
 }
@@ -877,10 +1026,117 @@ function renderMonthPanelCOP(month, person){
     <div class="sec-title">Meu resumo de horas — Ago a Dez/2026</div>
     <table class="report"><thead><tr><th>Colaborador</th><th>Time</th><th class="num">Agosto</th><th class="num">Setembro</th><th class="num">Outubro</th><th class="num">Novembro</th><th class="num">Dezembro</th><th class="num">Total período</th></tr></thead><tbody>${totalRows}</tbody></table>
     <div class="note">Este é o seu painel individual — você visualiza apenas os seus próprios turnos, plantões e folgas. Alterações na escala são feitas pelo Líder ou Master.</div>
+    ${renderMyRequestsSection(person)}
+  `;
+}
+
+function renderMyRequestsSection(person){
+  const myReqs = requests.filter(r => r.person === person).slice().sort((a,b) => b.createdAt.localeCompare(a.createdAt));
+  const rows = myReqs.map(r=>{
+    const d = fromISO(r.dateISO);
+    const dateLabel = `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`;
+    const horario = r.exitTime ? r.exitTime : '—';
+    const noteRow = r.responseNote ? `<div style="margin-top:4px;font-size:11px;color:var(--muted);"><b>Resposta:</b> ${r.responseNote}</div>` : '';
+    return `<tr>
+      <td>${dateLabel}</td>
+      <td>${requestTypeLabel(r.type)}</td>
+      <td>${horario}</td>
+      <td>${r.description}${noteRow}</td>
+      <td>${requestStatusBadge(r.status)}</td>
+    </tr>`;
+  }).join('');
+
+  return `
+    <div class="sec-title">📝 Minhas solicitações</div>
+    <div class="note">Precisa sair mais cedo, tirar uma folga ou avisar um atestado num dia específico? Envie a solicitação aqui — o Líder ou Master aprova ou rejeita, e você vê a resposta abaixo.</div>
+    <div style="background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 18px;margin-bottom:20px;">
+      <label class="login-label">Data</label>
+      <input type="date" id="reqDate" class="login-field" min="2026-08-01" max="2026-12-31">
+
+      <label class="login-label">Tipo de solicitação</label>
+      <select id="reqType" class="login-field" onchange="toggleReqExitTime(this.value)">
+        <option value="saida_antecipada">Sair mais cedo</option>
+        <option value="folga">Folga</option>
+        <option value="atestado">Atestado</option>
+      </select>
+
+      <div id="reqExitTimeWrap">
+        <label class="login-label">Horário que pretende sair</label>
+        <input type="time" id="reqExitTime" class="login-field">
+      </div>
+
+      <label class="login-label">Descrição (explique o motivo)</label>
+      <textarea id="reqDescription" rows="3" class="login-field" style="resize:vertical;font-family:'Space Grotesk',sans-serif;" placeholder="Ex: preciso sair às 15h por causa de uma consulta médica"></textarea>
+
+      <div id="reqError" style="display:none;color:var(--red);font-size:11.5px;font-family:'JetBrains Mono',monospace;margin-bottom:12px;"></div>
+
+      <button class="tab-btn active" style="padding:10px 20px;" onclick="submitRequest()">Enviar solicitação</button>
+    </div>
+    ${myReqs.length ? `
+    <table class="report">
+      <thead><tr><th>Data</th><th>Tipo</th><th>Horário</th><th>Descrição</th><th>Status</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>` : `<div class="note">Você ainda não enviou nenhuma solicitação.</div>`}
   `;
 }
 
 // ================== CONFIGURAÇÕES / FINANCEIRO (MASTER) ==================
+function renderRequestsPanel(){
+  const pending = requests.filter(r => r.status === 'pendente').slice().sort((a,b) => a.createdAt.localeCompare(b.createdAt));
+  const resolved = requests.filter(r => r.status !== 'pendente').slice().sort((a,b) => b.respondedAt.localeCompare(a.respondedAt));
+
+  const pendingRows = pending.map(r=>{
+    const d = fromISO(r.dateISO);
+    const dateLabel = `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`;
+    const horario = r.exitTime ? r.exitTime : '—';
+    return `<tr>
+      <td>${r.person}</td>
+      <td>${dateLabel}</td>
+      <td>${requestTypeLabel(r.type)}</td>
+      <td>${horario}</td>
+      <td>${r.description}</td>
+      <td>
+        <button class="tab-btn" style="color:var(--green);border-color:rgba(61,220,151,.4);" onclick="askRespondRequest('${r.id}','aprovado')">Aprovar</button>
+        <button class="tab-btn" style="color:var(--red);border-color:rgba(255,107,107,.4);" onclick="askRespondRequest('${r.id}','rejeitado')">Rejeitar</button>
+        <div id="reqConfirm-${r.id}"></div>
+      </td>
+    </tr>`;
+  }).join('');
+
+  const resolvedRows = resolved.map(r=>{
+    const d = fromISO(r.dateISO);
+    const dateLabel = `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`;
+    const horario = r.exitTime ? r.exitTime : '—';
+    return `<tr>
+      <td>${r.person}</td>
+      <td>${dateLabel}</td>
+      <td>${requestTypeLabel(r.type)}</td>
+      <td>${horario}</td>
+      <td>${r.description}${r.responseNote ? `<div style="margin-top:4px;font-size:11px;color:var(--muted);"><b>Resposta:</b> ${r.responseNote}</div>` : ''}</td>
+      <td>${requestStatusBadge(r.status)}</td>
+      <td style="font-size:11px;color:var(--muted);">${r.respondedBy || '—'}</td>
+    </tr>`;
+  }).join('');
+
+  return `
+    <div class="sec-title">📝 Solicitações pendentes ${pending.length ? `<span class="history-count">${pending.length}</span>` : ''}</div>
+    ${pending.length ? `
+    <table class="report">
+      <thead><tr><th>COP</th><th>Data</th><th>Tipo</th><th>Horário</th><th>Descrição</th><th>Ação</th></tr></thead>
+      <tbody>${pendingRows}</tbody>
+    </table>` : `<div class="note">Nenhuma solicitação pendente no momento.</div>`}
+
+    <div class="sec-title">Histórico de solicitações</div>
+    ${resolved.length ? `
+    <table class="report">
+      <thead><tr><th>COP</th><th>Data</th><th>Tipo</th><th>Horário</th><th>Descrição</th><th>Status</th><th>Respondido por</th></tr></thead>
+      <tbody>${resolvedRows}</tbody>
+    </table>` : `<div class="note">Nenhuma solicitação respondida ainda.</div>`}
+
+    <div class="note">Ao aprovar uma solicitação de <b>Folga</b> ou <b>Atestado</b>, o sistema já registra isso no dia certo automaticamente. Ao aprovar <b>Sair mais cedo</b>, as horas daquele dia são recalculadas com base no horário informado, sem precisar editar nada manualmente.</div>
+  `;
+}
+
 function renderPasswordManagerPanel(){
   const pwRows = Object.keys(APP_USERS).map(u=>{
     const c = APP_USERS[u];
@@ -967,12 +1223,13 @@ function renderHistoryForMonth(month){
     const dateLabel = `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`;
     const kindLabel = h.kind==='sat' ? 'Sábado' : (h.kind==='sun' ? 'Domingo' : 'Registro manual');
     const whenLabel = h.when.toLocaleString('pt-BR');
-    return `<tr><td>${whenLabel}</td><td>${dateLabel} (${dowLabel})</td><td>${kindLabel}</td><td>${h.oldValue}</td><td class="arrow">→</td><td>${h.newValue}</td></tr>`;
+    const whoLabelText = h.by || '—';
+    return `<tr><td>${whenLabel}</td><td><span class="code-chip">${whoLabelText}</span></td><td>${dateLabel} (${dowLabel})</td><td>${kindLabel}</td><td>${h.oldValue}</td><td class="arrow">→</td><td>${h.newValue}</td></tr>`;
   }).join('');
   return `
     <div class="history-block">
       <div class="history-title">📋 Histórico de alterações — ${MONTH_NAMES[month]} <span class="history-count">${entries.length} troca${entries.length>1?'s':''}</span></div>
-      <table class="report history-table"><thead><tr><th>Quando</th><th>Dia afetado</th><th>Plantão</th><th>Antes</th><th></th><th>Depois</th></tr></thead><tbody>${rows}</tbody></table>
+      <table class="report history-table"><thead><tr><th>Quando</th><th>Quem</th><th>Dia afetado</th><th>Plantão</th><th>Antes</th><th></th><th>Depois</th></tr></thead><tbody>${rows}</tbody></table>
       <div class="clear-history-area" id="clear-area-${month}">
         <button class="tab-btn" style="color:var(--red);border-color:rgba(255,107,107,.4);" onclick="toggleClearForm(${month})">Limpar todo o histórico</button>
       </div>
@@ -1008,9 +1265,11 @@ function buildTabs(){
   const bar = document.getElementById('tabsBar');
   let tabs = [8,9,10,11,12].map(m=>({id:String(m), label:MONTH_NAMES[m].toUpperCase()}));
   if(currentUser.role === 'master'){
+    tabs.push({id:'solicitacoes', label:'📝 SOLICITAÇÕES'});
     tabs.push({id:'config', label:'⚙️ CONFIGURAÇÕES'});
     tabs.push({id:'financeiro', label:'💰 FINANCEIRO'});
   } else if(currentUser.role === 'lider'){
+    tabs.push({id:'solicitacoes', label:'📝 SOLICITAÇÕES'});
     tabs.push({id:'senhas', label:'🔑 SENHAS'});
   }
   bar.innerHTML = tabs.map((t,i)=>`<button class="tab-btn${i===0?' active':''}" data-tab="${t.id}" onclick="switchTab('${t.id}')">${t.label}</button>`).join('');
@@ -1030,6 +1289,13 @@ function renderAll(){
     div.innerHTML = (currentUser.role === 'cop') ? renderMonthPanelCOP(m, currentUser.person) : renderMonthPanel(m);
     container.appendChild(div);
   });
+  if(currentUser.role === 'master' || currentUser.role === 'lider'){
+    const reqDiv = document.createElement('div');
+    reqDiv.className = 'panel-view' + (activeTab==='solicitacoes' ? ' active' : '');
+    reqDiv.id = 'panel-solicitacoes';
+    reqDiv.innerHTML = renderRequestsPanel();
+    container.appendChild(reqDiv);
+  }
   if(currentUser.role === 'master'){
     const configDiv = document.createElement('div');
     configDiv.className = 'panel-view' + (activeTab==='config' ? ' active' : '');
@@ -1061,6 +1327,8 @@ function applyRemoteData(data){
     sunCrew = data.sunCrew;
     satT3 = data.satT3 || {};
     manualEvents = data.manualEvents || {};
+    earlyLeaves = data.earlyLeaves || {};
+    requests = data.requests || [];
     changeHistory = (data.changeHistory || []).map(h => ({...h, when: h.when instanceof Date ? h.when : (h.when && h.when.toDate ? h.when.toDate() : new Date(h.when))}));
     return true;
   }
@@ -1070,7 +1338,7 @@ function applyRemoteData(data){
 async function saveState(){
   try{
     const payload = {
-      satCrew, sunCrew, satT3, manualEvents,
+      satCrew, sunCrew, satT3, manualEvents, earlyLeaves, requests,
       changeHistory: changeHistory.map(h => ({...h, when: h.when.toISOString()})),
       savedAt: new Date().toISOString(),
     };
@@ -1092,7 +1360,7 @@ async function loadStateOnce(){
 }
 
 function exportState(){
-  const payload = { satCrew, sunCrew, satT3, manualEvents, changeHistory: changeHistory.map(h => ({...h, when: h.when.toISOString()})) };
+  const payload = { satCrew, sunCrew, satT3, manualEvents, earlyLeaves, requests, changeHistory: changeHistory.map(h => ({...h, when: h.when.toISOString()})) };
   const box = document.getElementById('exportBox');
   const ta = document.getElementById('exportTextarea');
   ta.value = JSON.stringify(payload, null, 2);
