@@ -61,7 +61,11 @@
   .day .tag{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin-top:3px;}
   .day.sat .tag, .day.sun .tag{color:var(--text);font-weight:600;}
   .slots{display:flex;flex-direction:column;gap:4px;margin-top:7px;}
-  .slot select{width:100%;font-family:'Space Grotesk',sans-serif;font-size:10.5px;font-weight:600;padding:3px 4px;border-radius:5px;border:1px solid var(--line);background:rgba(255,255,255,.06);color:var(--text);cursor:pointer;}
+  .slot{display:flex;gap:4px;align-items:center;}
+  .slot select{flex:1;min-width:0;font-family:'Space Grotesk',sans-serif;font-size:10.5px;font-weight:600;padding:3px 4px;border-radius:5px;border:1px solid var(--line);background:rgba(255,255,255,.06);color:var(--text);cursor:pointer;}
+  .slot-remove{flex:0 0 auto;width:19px;height:19px;border-radius:4px;border:1px solid rgba(255,107,107,.3);background:rgba(255,107,107,.12);color:var(--red);font-size:11px;line-height:1;cursor:pointer;padding:0;}
+  .slot-add-btn{width:100%;margin-top:6px;font-size:9.5px;padding:4px;border-radius:5px;border:1px dashed var(--line);background:transparent;color:var(--muted);cursor:pointer;font-family:'JetBrains Mono',monospace;}
+  .slot-add-btn:hover{border-color:var(--cyan);color:var(--cyan);}
   .day.sat .slot select{background:rgba(255,180,84,.14);color:var(--amber);border-color:rgba(255,180,84,.3);}
   .day.sun .slot select{background:rgba(139,123,255,.16);color:var(--violet);border-color:rgba(139,123,255,.3);}
   .slot.slot-t3 select{background:rgba(255,60,120,.22)!important;color:#ff5c9e!important;border-color:#ff5c9e!important;box-shadow:0 0 8px rgba(255,60,120,.35);font-weight:700;}
@@ -69,6 +73,24 @@
   .t3-picker label{display:block;font-family:'JetBrains Mono',monospace;font-size:8.5px;letter-spacing:.04em;text-transform:uppercase;color:#ff5c9e;margin-bottom:3px;}
   .t3-picker select{width:100%;font-size:10px;padding:3px 4px;border-radius:5px;background:rgba(255,60,120,.10);color:#ff5c9e;border:1px solid rgba(255,60,120,.35);}
   .chip.folga-chip{font-family:'Space Grotesk',sans-serif;font-size:10px;font-weight:600;padding:2px 6px;border-radius:5px;background:rgba(61,220,151,.14);color:var(--green);display:inline-block;margin-top:4px;}
+  .day.falta{border-color:rgba(255,107,107,.35);background:linear-gradient(160deg,rgba(255,107,107,.09),var(--panel) 60%);}
+  .day.falta .tag{color:#ffffff;text-shadow:0 0 6px rgba(255,107,107,.6);font-weight:600;}
+  .day.atestado{border-color:rgba(75,227,255,.35);background:linear-gradient(160deg,rgba(75,227,255,.09),var(--panel) 60%);}
+  .day.atestado .tag{color:#ffffff;text-shadow:0 0 6px rgba(75,227,255,.6);font-weight:600;}
+  .day-gear-btn{position:absolute;top:7px;right:7px;width:18px;height:18px;border-radius:4px;border:1px solid var(--line);background:rgba(255,255,255,.06);color:var(--muted);font-size:10px;line-height:1;cursor:pointer;padding:0;z-index:2;}
+  .day-gear-btn:hover{color:var(--cyan);border-color:var(--cyan);}
+  .manual-events{margin-top:8px;padding-top:7px;border-top:1px dashed rgba(255,255,255,.1);display:flex;flex-direction:column;gap:4px;}
+  .manual-chip{font-family:'Space Grotesk',sans-serif;font-size:9.5px;font-weight:600;padding:2px 5px;border-radius:5px;display:inline-flex;align-items:center;gap:5px;}
+  .manual-chip.folga{background:rgba(61,220,151,.14);color:var(--green);}
+  .manual-chip.falta{background:rgba(255,107,107,.14);color:var(--red);}
+  .manual-chip.atestado{background:rgba(75,227,255,.14);color:var(--cyan);}
+  .chip-remove{background:none;border:none;color:inherit;cursor:pointer;font-size:11px;line-height:1;padding:0;}
+  .manual-add{display:flex;gap:3px;align-items:center;margin-top:2px;}
+  .manual-add select{flex:1;min-width:0;font-size:9.5px;padding:2px 3px;border-radius:4px;border:1px solid var(--line);background:rgba(255,255,255,.06);color:var(--text);}
+  /* Força o tema escuro também na lista suspensa dos <select>, que por
+     padrão usa as cores do sistema operacional/navegador. */
+  select, select option{background:var(--panel2);color:var(--text);}
+  .slot select option, .t3-picker select option, .manual-add select option, .login-field option{background:var(--panel2);color:var(--text);}
 
   table.report{width:100%;border-collapse:collapse;background:var(--panel);border-radius:10px;overflow:hidden;border:1px solid var(--line);font-size:12.5px;margin-bottom:10px;}
   table.report th{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);text-align:left;padding:9px 12px;background:var(--panel2);border-bottom:1px solid var(--line);}
@@ -264,6 +286,7 @@ let sunCrew = {"2026-08-02":["Eduardo","Raqueli"],"2026-08-09":["Bárbara","Tayn
 let folgaPlan = {};
 let changeHistory = [];
 let satT3 = {"2026-08-01":0,"2026-08-08":1,"2026-08-15":1,"2026-08-22":2,"2026-08-29":3};
+let manualEvents = {}; // dateISO -> [{person, type:'folga'|'falta'}] — registros manuais em qualquer dia
 const MANAGER_PIN = '2026COP'; // senha de gestor para limpar histórico — altere aqui
 
 const WEEKDAY_SCHEDULE = {
@@ -460,9 +483,16 @@ function recomputeFolga(){
 
 // ================== HOURS LOGIC ==================
 function hasFolga(dateISO, person){ return (folgaPlan[dateISO]||[]).includes(person); }
+function getManualEvent(dateISO, person){
+  const list = manualEvents[dateISO];
+  if(!list) return null;
+  const found = list.find(e => e.person === person);
+  return found ? found.type : null;
+}
 function dayHours(person, d){
   const iso = toISO(d);
   const w = dow(d);
+  if(getManualEvent(iso, person)) return 0; // folga ou falta manual sempre zera as horas do dia
   if(w===5) return (satCrew[iso]||[]).includes(person) ? 8 : 0;
   if(w===6) return (sunCrew[iso]||[]).includes(person) ? 8 : 0;
   return hasFolga(iso, person) ? 0 : 8;
@@ -508,6 +538,46 @@ function buildScheduleRefRows(personFilter){
 function personOptions(selected){
   return ALL_PEOPLE.map(p=>`<option value="${p}" ${p===selected?'selected':''}>${p}</option>`).join('');
 }
+function personOptionsPlaceholder(){
+  return '<option value="" selected disabled>Selecionar…</option>' + ALL_PEOPLE.map(p=>`<option value="${p}">${p}</option>`).join('');
+}
+function manualTypeLabel(type){
+  return type === 'folga' ? 'Folga' : (type === 'falta' ? 'Falta' : 'Atestado');
+}
+let openManualForms = new Set();
+function toggleManualForm(iso){
+  const el = document.getElementById('manualFormWrap-'+iso);
+  if(!el) return;
+  const isOpen = openManualForms.has(iso);
+  if(isOpen){ openManualForms.delete(iso); el.style.display = 'none'; }
+  else { openManualForms.add(iso); el.style.display = 'flex'; }
+}
+function dayGearButton(iso){
+  return `<button type="button" class="day-gear-btn" title="Adicionar folga, falta ou atestado" onclick="toggleManualForm('${iso}')">⚙</button>`;
+}
+function renderManualEventsBlock(iso){
+  const list = manualEvents[iso] || [];
+  const chips = list.map((e, idx)=>`
+    <span class="chip manual-chip ${e.type}">${e.person} · ${manualTypeLabel(e.type)}
+      <button type="button" class="chip-remove" title="Remover" onclick="removeManualEvent('${iso}',${idx})">×</button>
+    </span>`).join('');
+  const isOpen = openManualForms.has(iso);
+  return `
+    <div class="manual-events">
+      ${chips}
+      <div id="manualFormWrap-${iso}" class="manual-add" style="display:${isOpen ? 'flex' : 'none'};">
+        <select id="manualPerson-${iso}">${personOptionsPlaceholder()}</select>
+        <select id="manualType-${iso}">
+          <option value="folga">Folga</option>
+          <option value="falta">Falta</option>
+          <option value="atestado">Atestado</option>
+        </select>
+        <button type="button" class="slot-add-btn" style="margin-top:0;width:auto;padding:4px 8px;" onclick="addManualEvent('${iso}')">+</button>
+      </div>
+    </div>
+  `;
+}
+
 function dayCell(d){
   const iso = toISO(d);
   const w = dow(d);
@@ -516,27 +586,100 @@ function dayCell(d){
     const t3Idx = satT3[iso];
     const slots = satCrew[iso].map((p,idx)=>{
       const isT3 = (t3Idx === idx);
-      return `<div class="slot${isT3?' slot-t3':''}"><select onchange="onSwap('${iso}','sat',${idx},this.value)">${personOptions(p)}</select></div>`;
+      return `<div class="slot${isT3?' slot-t3':''}">
+        <select onchange="onSwap('${iso}','sat',${idx},this.value)">${personOptions(p)}</select>
+        <button type="button" class="slot-remove" title="Remover vaga" onclick="removeSlot('${iso}','sat',${idx})">×</button>
+      </div>`;
     }).join('');
     const t3Options = ['<option value="">— Ninguém —</option>']
       .concat(satCrew[iso].map((p,idx)=>`<option value="${idx}" ${t3Idx===idx?'selected':''}>${p}</option>`))
       .join('');
-    return `<div class="day sat"><div class="num">${d.getDate()}</div><div class="tag">Plantão sábado</div><div class="slots">${slots}</div>
+    return `<div class="day sat">${dayGearButton(iso)}<div class="num">${d.getDate()}</div><div class="tag">Plantão sábado</div><div class="slots">${slots}</div>
+      <button type="button" class="slot-add-btn" onclick="addSlot('${iso}','sat')">+ Adicionar vaga</button>
       <div class="t3-picker"><label>T3 (09h–18h) hoje:</label><select onchange="onSetSatT3('${iso}', this.value)">${t3Options}</select></div>
+      ${renderManualEventsBlock(iso)}
     </div>`;
   }
   if(w===6 && sunCrew[iso]){
-    const slots = sunCrew[iso].map((p,idx)=>`<div class="slot"><select onchange="onSwap('${iso}','sun',${idx},this.value)">${personOptions(p)}</select></div>`).join('');
-    return `<div class="day sun"><div class="num">${d.getDate()}</div><div class="tag">Plantão domingo</div><div class="slots">${slots}</div></div>`;
+    const slots = sunCrew[iso].map((p,idx)=>`<div class="slot">
+      <select onchange="onSwap('${iso}','sun',${idx},this.value)">${personOptions(p)}</select>
+      <button type="button" class="slot-remove" title="Remover vaga" onclick="removeSlot('${iso}','sun',${idx})">×</button>
+    </div>`).join('');
+    return `<div class="day sun">${dayGearButton(iso)}<div class="num">${d.getDate()}</div><div class="tag">Plantão domingo</div><div class="slots">${slots}</div>
+      <button type="button" class="slot-add-btn" onclick="addSlot('${iso}','sun')">+ Adicionar vaga</button>
+      ${renderManualEventsBlock(iso)}
+    </div>`;
   }
   if(folgaPlan[iso] && folgaPlan[iso].length){
     const chips = folgaPlan[iso].map(n=>`<span class="chip folga-chip">Folga: ${n}</span>`).join('<br>');
-    return `<div class="day folga"><div class="num">${d.getDate()}</div><div class="tag">Folga</div>${chips}</div>`;
+    return `<div class="day folga">${dayGearButton(iso)}<div class="num">${d.getDate()}</div><div class="tag">Folga</div>${chips}${renderManualEventsBlock(iso)}</div>`;
   }
-  return `<div class="day normal"><div class="num">${d.getDate()}</div><div class="tag">Equipe completa</div></div>`;
+  return `<div class="day normal">${dayGearButton(iso)}<div class="num">${d.getDate()}</div><div class="tag">Equipe completa</div>${renderManualEventsBlock(iso)}</div>`;
 }
 function onSetSatT3(dateISO, value){
   satT3[dateISO] = (value === '' ? null : Number(value));
+  renderAll();
+  saveState();
+}
+
+function addManualEvent(dateISO){
+  const person = document.getElementById('manualPerson-'+dateISO).value;
+  const type = document.getElementById('manualType-'+dateISO).value;
+  if(!person){
+    showToast('Selecione uma pessoa antes de adicionar.', true);
+    return;
+  }
+  if(!manualEvents[dateISO]) manualEvents[dateISO] = [];
+  if(manualEvents[dateISO].some(e => e.person === person)){
+    showToast(`${person} já tem um registro nesse dia. Remova antes de adicionar outro.`, true);
+    return;
+  }
+  manualEvents[dateISO].push({ person, type });
+  openManualForms.delete(dateISO);
+  changeHistory.push({ when: new Date(), dateISO, kind: 'manual', oldValue: '(sem registro)', newValue: `${person} — ${manualTypeLabel(type)}` });
+  renderAll();
+  saveState();
+}
+
+function removeManualEvent(dateISO, idx){
+  const list = manualEvents[dateISO];
+  if(!list || !list[idx]) return;
+  const removed = list[idx];
+  list.splice(idx, 1);
+  if(list.length === 0) delete manualEvents[dateISO];
+  changeHistory.push({ when: new Date(), dateISO, kind: 'manual', oldValue: `${removed.person} — ${manualTypeLabel(removed.type)}`, newValue: '(removido)' });
+  renderAll();
+  saveState();
+}
+
+function addSlot(dateISO, kind){
+  const arr = kind==='sat' ? satCrew[dateISO] : sunCrew[dateISO];
+  if(!arr) return;
+  const available = ALL_PEOPLE.filter(p => !arr.includes(p));
+  const newPerson = available[0] || ALL_PEOPLE[0];
+  arr.push(newPerson);
+  recomputeFolga();
+  changeHistory.push({ when: new Date(), dateISO, kind, oldValue: '(vaga vazia)', newValue: `${newPerson} (vaga adicionada)` });
+  renderAll();
+  saveState();
+}
+
+function removeSlot(dateISO, kind, idx){
+  const arr = kind==='sat' ? satCrew[dateISO] : sunCrew[dateISO];
+  if(!arr) return;
+  if(arr.length <= 1){
+    showToast('Precisa manter pelo menos 1 pessoa nesse plantão. Para remover o dia inteiro, edite o código.', true);
+    return;
+  }
+  const removed = arr[idx];
+  arr.splice(idx, 1);
+  if(kind === 'sat'){
+    const t3Idx = satT3[dateISO];
+    if(t3Idx === idx) satT3[dateISO] = null;
+    else if(t3Idx != null && t3Idx > idx) satT3[dateISO] = t3Idx - 1;
+  }
+  recomputeFolga();
+  changeHistory.push({ when: new Date(), dateISO, kind, oldValue: `${removed} (vaga removida)`, newValue: '(vaga vazia)' });
   renderAll();
   saveState();
 }
@@ -555,6 +698,16 @@ function dayCellPersonal(d, person){
   const iso = toISO(d);
   const w = dow(d);
   if(d < START || d > END) return '<div class="day empty"></div>';
+  const manual = getManualEvent(iso, person);
+  if(manual === 'folga'){
+    return `<div class="day folga"><div class="num">${d.getDate()}</div><div class="tag">Folga</div></div>`;
+  }
+  if(manual === 'falta'){
+    return `<div class="day falta"><div class="num">${d.getDate()}</div><div class="tag">Falta</div></div>`;
+  }
+  if(manual === 'atestado'){
+    return `<div class="day atestado"><div class="num">${d.getDate()}</div><div class="tag">Atestado</div></div>`;
+  }
   if(w===5){
     if((satCrew[iso]||[]).includes(person)){
       const idx = satCrew[iso].indexOf(person);
@@ -679,7 +832,9 @@ function renderMonthPanel(month){
       <span><span class="swatch" style="background:#ff5c9e"></span> T3 do sábado (09h–18h)</span>
       <span><span class="swatch" style="background:rgba(255,180,84,.35)"></span> Plantão de sábado</span>
       <span><span class="swatch" style="background:rgba(139,123,255,.35)"></span> Plantão de domingo</span>
-      <span><span class="swatch" style="background:rgba(61,220,151,.35)"></span> Folga (trabalhou domingo)</span>
+      <span><span class="swatch" style="background:rgba(61,220,151,.35)"></span> Folga (trabalhou domingo ou registro manual)</span>
+      <span><span class="swatch" style="background:rgba(255,107,107,.35)"></span> Falta (registro manual)</span>
+      <span><span class="swatch" style="background:rgba(75,227,255,.35)"></span> Atestado (registro manual)</span>
       <span><span class="swatch" style="background:#10151d;border:1px solid #1b232f"></span> Turno normal</span>
     </div>
     ${renderHistoryForMonth(month)}
@@ -687,7 +842,7 @@ function renderMonthPanel(month){
     <table class="matrix"><thead><tr><th>Colaborador</th><th>Time</th><th class="num">Total mês</th><th class="num">Média/sem.</th><th>Situação</th>${headerCells}</tr></thead><tbody>${rows}</tbody></table>
     <div class="sec-title">Resumo de horas — Ago a Dez/2026 (todos os meses)</div>
     <table class="report"><thead><tr><th>Colaborador</th><th>Time</th><th class="num">Agosto</th><th class="num">Setembro</th><th class="num">Outubro</th><th class="num">Novembro</th><th class="num">Dezembro</th><th class="num">Total período</th></tr></thead><tbody>${totalRows}</tbody></table>
-    <div class="note"><b>Regras aplicadas:</b> sábado sempre mescla Agendamento e Operacional (4 pessoas); domingo com 2 de qualquer time; ninguém repete sábado+domingo no mesmo fim de semana; quem trabalha domingo folga na semana seguinte, garantindo no máximo 6 dias corridos de trabalho. Qualquer troca recalcula esta tabela automaticamente e já é salva no Firebase para todos verem.</div>
+    <div class="note"><b>Regras aplicadas:</b> sábado sempre mescla Agendamento e Operacional (4 pessoas); domingo com 2 de qualquer time; ninguém repete sábado+domingo no mesmo fim de semana; quem trabalha domingo folga na semana seguinte, garantindo no máximo 6 dias corridos de trabalho. Qualquer troca recalcula esta tabela automaticamente e já é salva no Firebase para todos verem. Clique no ícone <b>⚙</b> no canto de qualquer dia pra adicionar um registro de <b>Folga</b>, <b>Falta</b> ou <b>Atestado</b> pra uma pessoa específica — isso já zera as horas dela naquele dia nos resumos.</div>
   `;
 }
 
@@ -712,7 +867,9 @@ function renderMonthPanelCOP(month, person){
     <div class="legend">
       <span><span class="swatch" style="background:rgba(255,180,84,.35)"></span> Plantão de sábado</span>
       <span><span class="swatch" style="background:rgba(139,123,255,.35)"></span> Plantão de domingo</span>
-      <span><span class="swatch" style="background:rgba(61,220,151,.35)"></span> Folga (trabalhou domingo)</span>
+      <span><span class="swatch" style="background:rgba(61,220,151,.35)"></span> Folga</span>
+      <span><span class="swatch" style="background:rgba(255,107,107,.35)"></span> Falta</span>
+      <span><span class="swatch" style="background:rgba(75,227,255,.35)"></span> Atestado</span>
       <span><span class="swatch" style="background:#10151d;border:1px solid #1b232f"></span> Turno normal</span>
     </div>
     <div class="sec-title">Meu resumo de horas — ${MONTH_NAMES[month]} (quebra semanal)</div>
@@ -808,7 +965,7 @@ function renderHistoryForMonth(month){
     const d = fromISO(h.dateISO);
     const dowLabel = DOW_NAMES[dow(d)];
     const dateLabel = `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`;
-    const kindLabel = h.kind==='sat' ? 'Sábado' : 'Domingo';
+    const kindLabel = h.kind==='sat' ? 'Sábado' : (h.kind==='sun' ? 'Domingo' : 'Registro manual');
     const whenLabel = h.when.toLocaleString('pt-BR');
     return `<tr><td>${whenLabel}</td><td>${dateLabel} (${dowLabel})</td><td>${kindLabel}</td><td>${h.oldValue}</td><td class="arrow">→</td><td>${h.newValue}</td></tr>`;
   }).join('');
@@ -903,6 +1060,7 @@ function applyRemoteData(data){
     satCrew = data.satCrew;
     sunCrew = data.sunCrew;
     satT3 = data.satT3 || {};
+    manualEvents = data.manualEvents || {};
     changeHistory = (data.changeHistory || []).map(h => ({...h, when: h.when instanceof Date ? h.when : (h.when && h.when.toDate ? h.when.toDate() : new Date(h.when))}));
     return true;
   }
@@ -912,7 +1070,7 @@ function applyRemoteData(data){
 async function saveState(){
   try{
     const payload = {
-      satCrew, sunCrew, satT3,
+      satCrew, sunCrew, satT3, manualEvents,
       changeHistory: changeHistory.map(h => ({...h, when: h.when.toISOString()})),
       savedAt: new Date().toISOString(),
     };
@@ -934,7 +1092,7 @@ async function loadStateOnce(){
 }
 
 function exportState(){
-  const payload = { satCrew, sunCrew, satT3, changeHistory: changeHistory.map(h => ({...h, when: h.when.toISOString()})) };
+  const payload = { satCrew, sunCrew, satT3, manualEvents, changeHistory: changeHistory.map(h => ({...h, when: h.when.toISOString()})) };
   const box = document.getElementById('exportBox');
   const ta = document.getElementById('exportTextarea');
   ta.value = JSON.stringify(payload, null, 2);
