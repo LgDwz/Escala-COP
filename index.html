@@ -612,6 +612,11 @@ function renderManualEventsBlock(iso){
   `;
 }
 
+function renderEarlyChipsForDay(iso){
+  const earlyToday = earlyLeaves[iso] || {};
+  return Object.keys(earlyToday).map(p=>`<span class="chip manual-chip atestado">${p} · saída ${earlyToday[p].exitTime} <button type="button" class="chip-remove" title="Remover" onclick="removeEarlyLeave('${iso}','${p}')">×</button></span>`).join('');
+}
+
 function dayCell(d){
   const iso = toISO(d);
   const w = dow(d);
@@ -631,6 +636,7 @@ function dayCell(d){
     return `<div class="day sat">${dayGearButton(iso)}<div class="num">${d.getDate()}</div><div class="tag">Plantão sábado</div><div class="slots">${slots}</div>
       <button type="button" class="slot-add-btn" onclick="addSlot('${iso}','sat')">+ Adicionar vaga</button>
       <div class="t3-picker"><label>T3 (09h–18h) hoje:</label><select onchange="onSetSatT3('${iso}', this.value)">${t3Options}</select></div>
+      ${renderEarlyChipsForDay(iso)}
       ${renderManualEventsBlock(iso)}
     </div>`;
   }
@@ -641,16 +647,15 @@ function dayCell(d){
     </div>`).join('');
     return `<div class="day sun">${dayGearButton(iso)}<div class="num">${d.getDate()}</div><div class="tag">Plantão domingo</div><div class="slots">${slots}</div>
       <button type="button" class="slot-add-btn" onclick="addSlot('${iso}','sun')">+ Adicionar vaga</button>
+      ${renderEarlyChipsForDay(iso)}
       ${renderManualEventsBlock(iso)}
     </div>`;
   }
   if(folgaPlan[iso] && folgaPlan[iso].length){
     const chips = folgaPlan[iso].map(n=>`<span class="chip folga-chip">Folga: ${n}</span>`).join('<br>');
-    return `<div class="day folga">${dayGearButton(iso)}<div class="num">${d.getDate()}</div><div class="tag">Folga</div>${chips}${renderManualEventsBlock(iso)}</div>`;
+    return `<div class="day folga">${dayGearButton(iso)}<div class="num">${d.getDate()}</div><div class="tag">Folga</div>${chips}${renderEarlyChipsForDay(iso)}${renderManualEventsBlock(iso)}</div>`;
   }
-  const earlyToday = earlyLeaves[iso] || {};
-  const earlyChips = Object.keys(earlyToday).map(p=>`<span class="chip manual-chip atestado">${p} · saída ${earlyToday[p].exitTime}</span>`).join('');
-  return `<div class="day normal">${dayGearButton(iso)}<div class="num">${d.getDate()}</div><div class="tag">Equipe completa</div>${earlyChips}${renderManualEventsBlock(iso)}</div>`;
+  return `<div class="day normal">${dayGearButton(iso)}<div class="num">${d.getDate()}</div><div class="tag">Equipe completa</div>${renderEarlyChipsForDay(iso)}${renderManualEventsBlock(iso)}</div>`;
 }
 function onSetSatT3(dateISO, value){
   satT3[dateISO] = (value === '' ? null : Number(value));
@@ -684,6 +689,15 @@ function removeManualEvent(dateISO, idx){
   list.splice(idx, 1);
   if(list.length === 0) delete manualEvents[dateISO];
   changeHistory.push({ when: new Date(), dateISO, kind: 'manual', oldValue: `${removed.person} — ${manualTypeLabel(removed.type)}`, newValue: '(removido)', by: whoLabel() });
+  renderAll();
+  saveState();
+}
+
+function removeEarlyLeave(dateISO, person){
+  if(!earlyLeaves[dateISO] || !earlyLeaves[dateISO][person]) return;
+  delete earlyLeaves[dateISO][person];
+  if(Object.keys(earlyLeaves[dateISO]).length === 0) delete earlyLeaves[dateISO];
+  changeHistory.push({ when: new Date(), dateISO, kind: 'manual', oldValue: `${person} — Saída antecipada`, newValue: '(removido)', by: whoLabel() });
   renderAll();
   saveState();
 }
@@ -1324,8 +1338,43 @@ function renderConfigPanel(){
 
     ${renderPasswordManagerPanel()}
 
+    <div class="sec-title">🧹 Limpar dados de teste</div>
+    <div class="note">Apaga de uma vez todos os registros de <b>Folga</b>, <b>Falta</b>, <b>Atestado</b>, <b>Home Office</b> e <b>Saída antecipada</b> em qualquer dia — útil pra limpar testes antes de liberar o dashboard pros COPs de verdade. As trocas de escala normal (sábado/domingo) e as solicitações não são afetadas por este botão.</div>
+    <div class="clear-history-area" id="clear-area-adjustments">
+      <button class="tab-btn" style="color:var(--red);border-color:rgba(255,107,107,.4);" onclick="toggleClearAdjustmentsForm()">Limpar todos os ajustes de teste</button>
+    </div>
+
     <div class="note warn"><b>Regras de segurança do Firestore:</b> nesse modelo (igual ao seu outro projeto), as coleções <span class="code-chip">auth</span> e <span class="code-chip">schedule</span> ficam com leitura/escrita livres — a proteção real é a senha (guardada como hash) e o fato de a interface não expor os controles de edição pra quem não é Líder/Master. Veja o texto de regras completo na mensagem que acompanha este arquivo.</div>
   `;
+}
+function toggleClearAdjustmentsForm(){
+  const area = document.getElementById('clear-area-adjustments');
+  area.innerHTML = `
+    <div class="clear-confirm">
+      <span>Digite a senha de gestor para confirmar:</span>
+      <input type="password" id="pin-adjustments" placeholder="Senha" onkeydown="if(event.key==='Enter') confirmClearAdjustments()">
+      <button class="tab-btn" style="color:var(--green);border-color:rgba(61,220,151,.4);" onclick="confirmClearAdjustments()">Confirmar</button>
+      <button class="tab-btn" onclick="renderAll()">Cancelar</button>
+    </div>
+  `;
+  document.getElementById('pin-adjustments').focus();
+}
+function confirmClearAdjustments(){
+  if(!currentUser || currentUser.role !== 'master'){
+    showToast('Somente o Master pode limpar os ajustes.', true);
+    return;
+  }
+  const input = document.getElementById('pin-adjustments');
+  if(input.value === MANAGER_PIN){
+    manualEvents = {};
+    earlyLeaves = {};
+    recomputeFolga();
+    showToast('Ajustes de teste apagados com sucesso.', false);
+    renderAll();
+    saveState();
+  } else {
+    showToast('Senha incorreta — nada foi apagado.', true);
+  }
 }
 function renderFinanceiroPanel(){
   return `<div class="sec-title">Financeiro</div><div class="note">Área reservada para informações financeiras (ex: custo de hora extra, folha por colaborador, orçamento do time). Nenhum dado foi adicionado ainda — este espaço está pronto para receber esse conteúdo quando você definir o que deve aparecer aqui.</div>`;
