@@ -861,8 +861,8 @@ function submitRequest(){
   errEl.style.display = 'none';
 
   if(!dateInput){ errEl.textContent = 'Escolha uma data.'; errEl.style.display='block'; return; }
-  const d = fromISO(dateInput);
-  if(d < START || d > END){ errEl.textContent = 'Escolha uma data dentro do período (Ago–Dez/2026).'; errEl.style.display='block'; return; }
+  const todayISO = new Date().toISOString().slice(0,10);
+  if(dateInput < todayISO){ errEl.textContent = 'Escolha uma data de hoje em diante.'; errEl.style.display='block'; return; }
   if(hasExitTime && !exitTime){ errEl.textContent = 'Informe o horário que pretende sair, ou desmarque a opção.'; errEl.style.display='block'; return; }
   if(!description){ errEl.textContent = 'Escreva sua solicitação.'; errEl.style.display='block'; return; }
 
@@ -1045,11 +1045,11 @@ function renderMonthPanelCOP(month, person){
     <div class="sec-title">Meu resumo de horas — Ago a Dez/2026</div>
     <table class="report"><thead><tr><th>Colaborador</th><th>Time</th><th class="num">Agosto</th><th class="num">Setembro</th><th class="num">Outubro</th><th class="num">Novembro</th><th class="num">Dezembro</th><th class="num">Total período</th></tr></thead><tbody>${totalRows}</tbody></table>
     <div class="note">Este é o seu painel individual — você visualiza apenas os seus próprios turnos, plantões e folgas. Alterações na escala são feitas pelo Líder ou Master.</div>
-    ${renderMyRequestsSection(person)}
   `;
 }
 
 function renderMyRequestsSection(person){
+  const todayISO = new Date().toISOString().slice(0,10);
   const myReqs = requests.filter(r => r.person === person).slice().sort((a,b) => b.createdAt.localeCompare(a.createdAt));
   const rows = myReqs.map(r=>{
     const d = fromISO(r.dateISO);
@@ -1070,7 +1070,7 @@ function renderMyRequestsSection(person){
     <div class="note">Precisa sair mais cedo, tirar uma folga, avisar um atestado ou qualquer outra coisa num dia específico? Escreva aqui — o Líder ou Master aprova ou rejeita, e você vê a resposta abaixo.</div>
     <div style="background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 18px;margin-bottom:20px;">
       <label class="login-label">Data</label>
-      <input type="date" id="reqDate" class="login-field" min="2026-08-01" max="2026-12-31">
+      <input type="date" id="reqDate" class="login-field" min="${todayISO}">
 
       <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--text);margin-bottom:10px;cursor:pointer;">
         <input type="checkbox" id="reqHasExitTime" onchange="toggleReqExitTime(this.checked)">
@@ -1287,6 +1287,8 @@ function buildTabs(){
   } else if(currentUser.role === 'lider'){
     tabs.push({id:'solicitacoes', label:'📝 SOLICITAÇÕES'});
     tabs.push({id:'senhas', label:'🔑 SENHAS'});
+  } else if(currentUser.role === 'cop'){
+    tabs.push({id:'solicitacoes', label:'📝 MINHAS SOLICITAÇÕES'});
   }
   bar.innerHTML = tabs.map((t,i)=>`<button class="tab-btn${i===0?' active':''}" data-tab="${t.id}" onclick="switchTab('${t.id}')">${t.label}</button>`).join('');
 }
@@ -1310,6 +1312,12 @@ function renderAll(){
     reqDiv.className = 'panel-view' + (activeTab==='solicitacoes' ? ' active' : '');
     reqDiv.id = 'panel-solicitacoes';
     reqDiv.innerHTML = renderRequestsPanel();
+    container.appendChild(reqDiv);
+  } else if(currentUser.role === 'cop'){
+    const reqDiv = document.createElement('div');
+    reqDiv.className = 'panel-view' + (activeTab==='solicitacoes' ? ' active' : '');
+    reqDiv.id = 'panel-solicitacoes';
+    reqDiv.innerHTML = renderMyRequestsSection(currentUser.person);
     container.appendChild(reqDiv);
   }
   if(currentUser.role === 'master'){
