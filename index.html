@@ -292,6 +292,7 @@ let changeHistory = [];
 let satT3 = {"2026-08-01":0,"2026-08-08":1,"2026-08-15":1,"2026-08-22":2,"2026-08-29":3};
 let manualEvents = {}; // dateISO -> [{person, type:'folga'|'falta'}] — registros manuais em qualquer dia
 let earlyLeaves = {}; // dateISO -> { person: {hoursWorked, exitTime} } — aplicado quando uma solicitação de sair mais cedo é aprovada
+let folgaOverrides = {}; // "dateISO|person" -> true — suprime uma folga automática específica (pra mover/remover manualmente)
 let requests = []; // solicitações dos COPs: {id, dateISO, person, type, description, exitTime, status, createdAt, respondedBy, respondedAt, responseNote}
 const MANAGER_PIN = '2026COP'; // senha de gestor para limpar histórico — altere aqui
 
@@ -470,6 +471,8 @@ function dow(d){ return (d.getDay()+6)%7; }
 function fromISO(s){ return new Date(s+'T00:00:00'); }
 
 // ================== FOLGA RECOMPUTE ==================
+function folgaOverrideKey(dateISO, person){ return dateISO + '|' + person; }
+
 function recomputeFolga(){
   folgaPlan = {};
   for(const sunISO in sunCrew){
@@ -481,10 +484,20 @@ function recomputeFolga(){
     sunCrew[sunISO].forEach((p, idx)=>{
       const day = candidates[idx % candidates.length];
       const iso = toISO(day);
+      if(folgaOverrides[folgaOverrideKey(iso, p)]) return; // removida manualmente — não recoloca
       if(!folgaPlan[iso]) folgaPlan[iso] = [];
       folgaPlan[iso].push(p);
     });
   }
+}
+
+function removeAutoFolga(dateISO, person){
+  folgaOverrides[folgaOverrideKey(dateISO, person)] = true;
+  recomputeFolga();
+  changeHistory.push({ when: new Date(), dateISO, kind: 'manual', oldValue: `${person} — Folga automática`, newValue: '(removida — adicione manualmente em outro dia pelo ⚙, se precisar)', by: whoLabel() });
+  showToast(`Folga automática de ${person} removida desse dia. Use o ícone ⚙ em outro dia pra recolocar a folga dela lá.`, false);
+  renderAll();
+  saveState();
 }
 
 // ================== HOURS LOGIC ==================
@@ -660,7 +673,7 @@ function dayCell(d){
     </div>`;
   }
   if(folgaPlan[iso] && folgaPlan[iso].length){
-    const chips = folgaPlan[iso].map(n=>`<span class="chip folga-chip">Folga: ${n}</span>`).join('<br>');
+    const chips = folgaPlan[iso].map(n=>`<span class="chip folga-chip">Folga: ${n} <button type="button" class="chip-remove" title="Remover essa folga automática" onclick="removeAutoFolga('${iso}','${n}')">×</button></span>`).join('<br>');
     return `<div class="day folga">${dayGearButton(iso)}<div class="num">${d.getDate()}</div><div class="tag">Folga</div>${chips}${renderEarlyChipsForDay(iso)}${renderManualEventsBlock(iso)}</div>`;
   }
   return `<div class="day normal">${dayGearButton(iso)}<div class="num">${d.getDate()}</div><div class="tag">Equipe completa</div>${renderEarlyChipsForDay(iso)}${renderManualEventsBlock(iso)}</div>`;
@@ -1360,7 +1373,7 @@ function renderConfigPanel(){
     ${renderPasswordManagerPanel()}
 
     <div class="sec-title">🧹 Limpar dados de teste</div>
-    <div class="note">Apaga de uma vez todos os registros de <b>Folga</b>, <b>Falta</b>, <b>Atestado</b>, <b>Home Office</b> e <b>Saída antecipada</b> em qualquer dia — útil pra limpar testes antes de liberar o dashboard pros COPs de verdade. As trocas de escala normal (sábado/domingo) e as solicitações não são afetadas por este botão.</div>
+    <div class="note">Apaga de uma vez todos os registros de <b>Folga</b>, <b>Falta</b>, <b>Atestado</b>, <b>Home Office</b>, <b>Saída antecipada</b> e restaura as <b>folgas automáticas</b> que tiverem sido removidas manualmente — útil pra limpar testes antes de liberar o dashboard pros COPs de verdade. As trocas de escala normal (sábado/domingo) e as solicitações não são afetadas por este botão.</div>
     <div class="clear-history-area" id="clear-area-adjustments">
       <button class="tab-btn" style="color:var(--red);border-color:rgba(255,107,107,.4);" onclick="toggleClearAdjustmentsForm()">Limpar todos os ajustes de teste</button>
     </div>
@@ -1389,6 +1402,7 @@ function confirmClearAdjustments(){
   if(input.value === MANAGER_PIN){
     manualEvents = {};
     earlyLeaves = {};
+    folgaOverrides = {};
     recomputeFolga();
     showToast('Ajustes de teste apagados com sucesso.', false);
     renderAll();
@@ -1530,6 +1544,7 @@ function applyRemoteData(data){
     satT3 = data.satT3 || {};
     manualEvents = data.manualEvents || {};
     earlyLeaves = data.earlyLeaves || {};
+    folgaOverrides = data.folgaOverrides || {};
     requests = data.requests || [];
     changeHistory = (data.changeHistory || []).map(h => ({...h, when: h.when instanceof Date ? h.when : (h.when && h.when.toDate ? h.when.toDate() : new Date(h.when))}));
     return true;
@@ -1540,7 +1555,7 @@ function applyRemoteData(data){
 async function saveState(){
   try{
     const payload = {
-      satCrew, sunCrew, satT3, manualEvents, earlyLeaves, requests,
+      satCrew, sunCrew, satT3, manualEvents, earlyLeaves, folgaOverrides, requests,
       changeHistory: changeHistory.map(h => ({...h, when: h.when.toISOString()})),
       savedAt: new Date().toISOString(),
     };
@@ -1562,7 +1577,7 @@ async function loadStateOnce(){
 }
 
 function exportState(){
-  const payload = { satCrew, sunCrew, satT3, manualEvents, earlyLeaves, requests, changeHistory: changeHistory.map(h => ({...h, when: h.when.toISOString()})) };
+  const payload = { satCrew, sunCrew, satT3, manualEvents, earlyLeaves, folgaOverrides, requests, changeHistory: changeHistory.map(h => ({...h, when: h.when.toISOString()})) };
   const box = document.getElementById('exportBox');
   const ta = document.getElementById('exportTextarea');
   ta.value = JSON.stringify(payload, null, 2);
